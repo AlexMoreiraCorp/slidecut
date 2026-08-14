@@ -26,7 +26,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import convert, core, preview
+from . import convert, core, preview, resources
 from .errors import SlidecutError
 
 INPUT_FILETYPES = [
@@ -71,6 +71,18 @@ def selection_summary(selected: int, total: int) -> str:
     return f"{total} paginas. {selected} corte(s) marcado(s) - gera {selected} arquivo(s)."
 
 
+def apply_window_icon(root: tk.Tk) -> None:
+    """Poe o icone do programa na barra de titulo e na barra de tarefas.
+
+    Falhar aqui nao pode derrubar a janela: sem o icone o programa continua
+    inteiro, so fica com o desenho padrao do Tk.
+    """
+    try:
+        root.iconbitmap(default=str(resources.icon_path()))
+    except (tk.TclError, OSError):
+        pass
+
+
 def open_in_file_manager(path: Path) -> None:
     """Abre a pasta de saida no explorador de arquivos do sistema."""
     if sys.platform.startswith("win"):
@@ -86,6 +98,7 @@ class SlidecutApp:
         self.root = root
         self.root.title(WINDOW_TITLE)
         self.root.geometry(WINDOW_SIZE)
+        apply_window_icon(root)
 
         self.workdir = Path(tempfile.mkdtemp(prefix="slidecut-gui-"))
         # Rede de seguranca: se a janela for fechada de um jeito que nao dispare

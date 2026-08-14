@@ -6,9 +6,17 @@ aqueles slides de fundo chapado que anunciam um tema novo.
 A cor do divisor é **detectada sozinha**: o programa procura a cor forte que se repete ao longo do
 arquivo. Não há cor fixa no código, então funciona com qualquer template.
 
-## Instalação
+## Instalação (usuário final)
 
-Requisito: [LibreOffice](https://www.libreoffice.org/) instalado (só para entradas que não sejam PDF).
+Rode `slidecut-setup-X.Y.Z.exe`. Ele instala o programa, cria o atalho na área de trabalho
+(opcional) e no menu iniciar, e registra o desinstalador no Painel de Controle.
+
+O instalador também resolve a única dependência externa: o **LibreOffice**, usado para converter
+apresentações e documentos em PDF. Se ele não estiver na máquina, o setup pergunta e faz o
+download oficial (~350 MB), conferindo o SHA-256 publicado pela The Document Foundation antes de
+executar. Quem só corta PDFs pode recusar — o programa funciona sem ele.
+
+## Instalação (desenvolvimento)
 
 ```bash
 python -m venv .venv
@@ -72,15 +80,21 @@ daria um nome ruim.
 
 Botões `Usar sugestão por cor` e `Limpar marcas` refazem a seleção inteira de uma vez.
 
-## Gerar o executável (.exe)
+## Gerar o executável e o instalador
 
-```bash
-.venv/Scripts/python.exe -m pip install -e ".[dev]"
-.venv/Scripts/pyinstaller.exe --noconfirm --onefile --windowed --name slidecut --paths src entry_gui.py
+```powershell
+.\tools\build.ps1
 ```
 
-Gera `dist/slidecut.exe`, standalone (não precisa Python instalado na máquina que for rodar —
-só o LibreOffice, e apenas se for converter algo que não seja PDF).
+Gera o ícone, roda os testes, empacota `dist/slidecut.exe` (standalone — não precisa Python na
+máquina de destino) e compila `dist/slidecut-setup-X.Y.Z.exe`.
+
+Requer [Inno Setup 6](https://jrsoftware.org/isdl.php) para a etapa do instalador; sem ele o
+script avisa e entrega só o executável.
+
+O ícone é desenhado por código em [`tools/make_icon.py`](tools/make_icon.py) e gravado em
+`src/slidecut/assets/` — dentro do pacote, para que o mesmo caminho funcione rodando do fonte e
+dentro do executável congelado.
 
 ## Formatos aceitos
 
@@ -121,5 +135,6 @@ Testes lentos (`-m slow`) sobem o LibreOffice de verdade e são pulados se ele n
 | `core.py` | Fluxo compartilhado: automático (`process`) e manual (`prepare` + `cut_at`) |
 | `cli.py` | Argumentos, relatório e código de saída |
 | `gui.py` | Janela: escolha do arquivo e seleção manual dos cortes |
+| `resources.py` | Localiza o ícone, no fonte e no executável congelado |
 
 A CLI continua 100% automática (útil em lote); o modo manual existe só na interface gráfica.

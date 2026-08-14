@@ -10,3 +10,4 @@ htmlcov/
 /build/
 /dist/
 *.spec
+src/slidecut/assets/icon.png
