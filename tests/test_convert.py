@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from slidecut import convert
+from slidecut.errors import ConversionError, UnsupportedFormat
+
+
+def test_pdf_input_is_returned_untouched(deck, tmp_path):
+    assert convert.to_pdf(deck, tmp_path) == deck
+
+
+def test_unknown_extension_is_rejected(tmp_path):
+    src = tmp_path / "arquivo.xyz"
+    src.write_text("nada")
+    with pytest.raises(UnsupportedFormat):
+        convert.to_pdf(src, tmp_path)
+
+
+def test_missing_file_is_rejected(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        convert.to_pdf(tmp_path / "sumiu.pptx", tmp_path)
+
+
+def test_office_input_is_converted_via_libreoffice(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+    produced = tmp_path / "work" / "aula.pdf"
+
+    def fake_run(cmd, **kwargs):
+        produced.parent.mkdir(parents=True, exist_ok=True)
+        produced.write_bytes(b"%PDF-1.4\n")
+        return convert.subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(convert, "find_soffice", lambda: Path("soffice"))
+    monkeypatch.setattr(convert.subprocess, "run", fake_run)
+
+    assert convert.to_pdf(src, tmp_path / "work") == produced
+
+
+def test_conversion_failure_is_reported(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+
+    monkeypatch.setattr(convert, "find_soffice", lambda: Path("soffice"))
+    monkeypatch.setattr(
+        convert.subprocess,
+        "run",
+        lambda cmd, **kw: convert.subprocess.CompletedProcess(cmd, 1, b"", b"boom"),
+    )
+
+    with pytest.raises(ConversionError):
+        convert.to_pdf(src, tmp_path / "work")
+
+
+def test_missing_libreoffice_is_reported(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+    monkeypatch.setattr(convert, "find_soffice", lambda: None)
+    with pytest.raises(ConversionError, match="LibreOffice"):
+        convert.to_pdf(src, tmp_path / "work")
+
+
+def test_supported_inputs_cover_common_slide_formats():
+    for ext in (".pptx", ".ppt", ".odp", ".key", ".docx", ".odt", ".pdf"):
+        assert ext in convert.SUPPORTED_INPUTS
+
+
+def test_find_soffice_prefers_environment_override(tmp_path, monkeypatch):
+    fake = tmp_path / "soffice.exe"
+    fake.write_bytes(b"")
+    monkeypatch.setenv("SLIDECUT_SOFFICE", str(fake))
+    assert convert.find_soffice() == fake
+
+
+def test_find_soffice_ignores_override_that_does_not_exist(tmp_path, monkeypatch):
+    monkeypatch.setenv("SLIDECUT_SOFFICE", str(tmp_path / "inexistente.exe"))
+    monkeypatch.setattr(convert.shutil, "which", lambda name: None)
+    monkeypatch.setattr(convert, "SOFFICE_CANDIDATES", ())
+    assert convert.find_soffice() is None
+
+
+def test_find_soffice_uses_path_lookup(monkeypatch):
+    monkeypatch.delenv("SLIDECUT_SOFFICE", raising=False)
+    monkeypatch.setattr(convert.shutil, "which", lambda name: "/usr/bin/soffice")
+    assert convert.find_soffice() == Path("/usr/bin/soffice")
+
+
+def test_find_soffice_falls_back_to_known_install_paths(tmp_path, monkeypatch):
+    fake = tmp_path / "soffice"
+    fake.write_bytes(b"")
+    monkeypatch.delenv("SLIDECUT_SOFFICE", raising=False)
+    monkeypatch.setattr(convert.shutil, "which", lambda name: None)
+    monkeypatch.setattr(convert, "SOFFICE_CANDIDATES", (str(fake),))
+    assert convert.find_soffice() == fake
+
+
+def test_libreoffice_is_installed_on_this_machine():
+    assert convert.find_soffice() is not None
+
+
+def test_libreoffice_timeout_is_reported_as_conversion_error(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+
+    def hang(cmd, **kwargs):
+        raise convert.subprocess.TimeoutExpired(cmd, convert.CONVERSION_TIMEOUT)
+
+    monkeypatch.setattr(convert, "find_soffice", lambda: Path("soffice"))
+    monkeypatch.setattr(convert.subprocess, "run", hang)
+
+    with pytest.raises(ConversionError, match="tempo"):
+        convert.to_pdf(src, tmp_path / "work")
+
+
+def test_non_executable_override_is_ignored(tmp_path, monkeypatch):
+    fake = tmp_path / "soffice.txt"
+    fake.write_text("nao sou executavel")
+    monkeypatch.setenv("SLIDECUT_SOFFICE", str(fake))
+    monkeypatch.setattr(convert.os, "access", lambda path, mode: False)
+    monkeypatch.setattr(convert.shutil, "which", lambda name: None)
+    monkeypatch.setattr(convert, "SOFFICE_CANDIDATES", ())
+    assert convert.find_soffice() is None
