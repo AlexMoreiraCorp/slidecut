@@ -133,3 +133,81 @@ def test_needs_conversion_is_false_for_pdf(tmp_path):
 def test_needs_conversion_is_true_for_slides_and_documents(tmp_path):
     assert convert.needs_conversion(tmp_path / "aula.pptx")
     assert convert.needs_conversion(tmp_path / "texto.docx")
+
+
+def test_office_is_preferred_when_available(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+    produced = tmp_path / "work" / "aula.pdf"
+
+    monkeypatch.setattr(convert.office, "is_available", lambda suffix: True)
+    monkeypatch.setattr(convert.office, "to_pdf", lambda s, w: produced)
+    monkeypatch.setattr(
+        convert, "find_soffice", lambda: pytest.fail("nao devia chamar o LibreOffice")
+    )
+
+    assert convert.to_pdf(src, tmp_path / "work") == produced
+
+
+def test_libreoffice_takes_over_when_office_is_missing(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+    produced = tmp_path / "work" / "aula.pdf"
+
+    monkeypatch.setattr(convert.office, "is_available", lambda suffix: False)
+    monkeypatch.setattr(convert, "find_soffice", lambda: Path("soffice"))
+
+    def fake_run(cmd, **kwargs):
+        produced.parent.mkdir(parents=True, exist_ok=True)
+        produced.write_bytes(b"%PDF-1.4\n")
+        return convert.subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(convert.subprocess, "run", fake_run)
+    assert convert.to_pdf(src, tmp_path / "work") == produced
+
+
+def test_libreoffice_takes_over_when_office_fails(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+    produced = tmp_path / "work" / "aula.pdf"
+
+    def office_boom(source, workdir):
+        raise ConversionError("PowerPoint travou")
+
+    monkeypatch.setattr(convert.office, "is_available", lambda suffix: True)
+    monkeypatch.setattr(convert.office, "to_pdf", office_boom)
+    monkeypatch.setattr(convert, "find_soffice", lambda: Path("soffice"))
+
+    def fake_run(cmd, **kwargs):
+        produced.parent.mkdir(parents=True, exist_ok=True)
+        produced.write_bytes(b"%PDF-1.4\n")
+        return convert.subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(convert.subprocess, "run", fake_run)
+    assert convert.to_pdf(src, tmp_path / "work") == produced
+
+
+def test_error_mentions_both_converters_when_neither_exists(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+
+    monkeypatch.setattr(convert.office, "is_available", lambda suffix: False)
+    monkeypatch.setattr(convert, "find_soffice", lambda: None)
+
+    with pytest.raises(ConversionError) as excinfo:
+        convert.to_pdf(src, tmp_path / "work")
+    assert "Office" in str(excinfo.value)
+    assert "LibreOffice" in str(excinfo.value)
+
+
+def test_a_converter_is_reported_through_the_progress_callback(tmp_path, monkeypatch):
+    src = tmp_path / "aula.pptx"
+    src.write_bytes(b"fake")
+    produced = tmp_path / "work" / "aula.pdf"
+
+    monkeypatch.setattr(convert.office, "is_available", lambda suffix: True)
+    monkeypatch.setattr(convert.office, "to_pdf", lambda s, w: produced)
+
+    messages = []
+    convert.to_pdf(src, tmp_path / "work", on_progress=messages.append)
+    assert any("Office" in m for m in messages)

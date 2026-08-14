@@ -74,7 +74,7 @@ def prepare(
     source = Path(source).expanduser()
 
     _notify(on_progress, f"Preparando {source.name}...")
-    pdf_path = convert.to_pdf(source, workdir)
+    pdf_path = convert.to_pdf(source, workdir, on_progress=on_progress)
 
     _notify(on_progress, "Analisando cores das paginas...")
     colors = analyze.page_colors(pdf_path)

@@ -5,6 +5,28 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
+from slidecut import office
+
+
+@pytest.fixture(autouse=True)
+def isolate_office(request, monkeypatch):
+    """Impede que um teste abra o Microsoft Office de verdade sem querer.
+
+    A conversao pelo Office e escolhida sozinha quando a maquina tem Office,
+    entao qualquer teste de conversao acabaria disparando o PowerPoint — lento,
+    e o resultado passaria a depender da maquina. Testes que precisam do Office
+    real levam a marca `real_office`.
+    """
+    if "real_office" in request.keywords:
+        return
+
+    monkeypatch.setattr(office, "_progid_registered", lambda progid: False)
+
+    def _refuse(progid):
+        raise AssertionError(f"o teste tentou abrir o Office de verdade ({progid})")
+
+    monkeypatch.setattr(office, "_dispatch", _refuse)
+
 ORANGE = (0.69, 0.43, 0.01)
 WHITE = (1.0, 1.0, 1.0)
 PAGE_SIZE = (720, 405)

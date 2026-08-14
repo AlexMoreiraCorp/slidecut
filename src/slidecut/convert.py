@@ -6,8 +6,19 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Callable
 
+from . import office
 from .errors import ConversionError, UnsupportedFormat
+
+ProgressCallback = Callable[[str], None]
+
+
+def _notify(on_progress: ProgressCallback | None, message: str) -> None:
+    if on_progress is not None:
+        on_progress(message)
+
+
 
 SLIDE_FORMATS = {".pptx", ".ppt", ".odp", ".key", ".pps", ".ppsx", ".fodp", ".otp"}
 TEXT_FORMATS = {".docx", ".doc", ".odt", ".rtf", ".txt", ".fodt", ".ott", ".pages"}
@@ -44,12 +55,31 @@ def find_soffice() -> Path | None:
 
 
 def needs_conversion(source: str | Path) -> bool:
-    """Diz se o arquivo precisa passar pelo LibreOffice antes do corte."""
+    """Diz se o arquivo precisa ser convertido antes do corte."""
     return Path(source).suffix.lower() != ".pdf"
 
 
-def to_pdf(source: str | Path, workdir: str | Path) -> Path:
-    """Devolve um PDF equivalente a entrada. PDFs de entrada passam direto."""
+def available_converter(suffix: str) -> str | None:
+    """Nome do conversor que daria conta desse formato nesta maquina."""
+    if office.is_available(suffix):
+        return "Microsoft Office"
+    if find_soffice() is not None:
+        return "LibreOffice"
+    return None
+
+
+def to_pdf(
+    source: str | Path,
+    workdir: str | Path,
+    on_progress: ProgressCallback | None = None,
+) -> Path:
+    """Devolve um PDF equivalente a entrada. PDFs de entrada passam direto.
+
+    Tenta o Microsoft Office primeiro: quando existe na maquina, a renderizacao
+    e feita pelo proprio aplicativo que criou o arquivo, entao o resultado e
+    fiel e nao exige instalar mais nada. O LibreOffice entra quando o Office
+    nao esta disponivel ou falha.
+    """
     source = Path(source)
     if not source.is_file():
         raise FileNotFoundError(f"arquivo nao encontrado: {source}")
@@ -63,13 +93,21 @@ def to_pdf(source: str | Path, workdir: str | Path) -> Path:
     if suffix == ".pdf":
         return source
 
+    if office.is_available(suffix):
+        _notify(on_progress, "Convertendo com o Microsoft Office...")
+        try:
+            return office.to_pdf(source, workdir)
+        except ConversionError as exc:
+            _notify(on_progress, f"Office nao deu conta ({exc}); tentando o LibreOffice...")
+
     soffice = find_soffice()
     if soffice is None:
         raise ConversionError(
-            "LibreOffice nao encontrado. Instale-o ou aponte SLIDECUT_SOFFICE "
-            "para o executavel soffice."
+            "nenhum conversor encontrado. Instale o Microsoft Office ou o "
+            "LibreOffice, ou aponte SLIDECUT_SOFFICE para o executavel soffice."
         )
 
+    _notify(on_progress, "Convertendo com o LibreOffice...")
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     command = [

@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slidecut"
-version = "0.1.0"
+version = "0.3.0"
 description = "Converte apresentacoes e documentos para PDF e corta em capitulos nas paginas divisoras coloridas."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pymupdf>=1.24",
     "pypdf>=4.0",
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -36,7 +37,10 @@ slidecut = ["assets/*.ico", "assets/*.png"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["slow: exercita o LibreOffice de verdade (mais lento)"]
+markers = [
+    "slow: exercita o LibreOffice de verdade (mais lento)",
+    "real_office: consulta o Microsoft Office instalado nesta maquina",
+]
 
 [tool.coverage.run]
 source = ["slidecut"]

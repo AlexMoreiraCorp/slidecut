@@ -11,10 +11,22 @@ arquivo. Não há cor fixa no código, então funciona com qualquer template.
 Rode `slidecut-setup-X.Y.Z.exe`. Ele instala o programa, cria o atalho na área de trabalho
 (opcional) e no menu iniciar, e registra o desinstalador no Painel de Controle.
 
-O instalador também resolve a única dependência externa: o **LibreOffice**, usado para converter
-apresentações e documentos em PDF. Se ele não estiver na máquina, o setup pergunta e faz o
-download oficial (~350 MB), conferindo o SHA-256 publicado pela The Document Foundation antes de
-executar. Quem só corta PDFs pode recusar — o programa funciona sem ele.
+### Conversão de slides e documentos
+
+Cortar um PDF não exige nada além do programa. Converter apresentações e documentos exige um
+conversor, e o slidecut usa o que a máquina já tiver:
+
+1. **Microsoft Office**, se instalado. É o caminho preferido: quem renderiza é o próprio
+   PowerPoint/Word/Excel, então o PDF sai idêntico ao que o autor via. Não instala nada e é mais
+   rápido (~2s contra ~5s do LibreOffice num arquivo pequeno).
+2. **LibreOffice**, como reserva — quando não há Office, ou quando o Office falha.
+
+O instalador só oferece baixar o LibreOffice (~350 MB) se a máquina **não tiver nenhum dos dois**,
+conferindo o SHA-256 publicado pela The Document Foundation antes de executar. Numa máquina com
+Office, a instalação não baixa nada.
+
+O programa nunca fecha um Office que já estava aberto: se você estiver com o PowerPoint em uso, ele
+se conecta à sua sessão para exportar e a deixa exatamente como estava.
 
 ## Instalação (desenvolvimento)
 
@@ -127,7 +139,8 @@ Testes lentos (`-m slow`) sobem o LibreOffice de verdade e são pulados se ele n
 
 | Módulo | Responsabilidade |
 |---|---|
-| `convert.py` | Entrada → PDF via LibreOffice headless |
+| `convert.py` | Entrada → PDF: escolhe o conversor e cai para o seguinte se falhar |
+| `office.py` | Conversão pelo Microsoft Office instalado (automação COM) |
 | `analyze.py` | Cor dominante por página e detecção dos divisores |
 | `titles.py` | Título do slide → nome de arquivo válido |
 | `split.py` | Intervalos de páginas → PDFs de saída |

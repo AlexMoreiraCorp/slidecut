@@ -55,3 +55,20 @@ def test_pptx_is_converted_and_split_by_divider_slides(tmp_path, capsys):
     produced = sorted(p.name for p in outdir.glob("*.pdf"))
     assert produced == ["01 - Conceito.pdf", "02 - Fontes.pdf"]
     assert "Cor divisora: #B0" in capsys.readouterr().out
+
+
+@pytest.mark.slow
+@pytest.mark.real_office
+def test_office_converts_a_real_pptx_and_the_cuts_are_detected(tmp_path):
+    """Caminho preferido de verdade: PowerPoint instalado exportando o PDF."""
+    from slidecut import analyze, office
+
+    if not office.is_available(".pptx"):
+        pytest.skip("Microsoft Office nao instalado")
+
+    source = _build_pptx(tmp_path / "aula.pptx")
+    produced = office.to_pdf(source, tmp_path / "work")
+
+    assert produced.is_file()
+    assert produced.read_bytes().startswith(b"%PDF")
+    assert analyze.find_dividers(produced) == [0, 3]

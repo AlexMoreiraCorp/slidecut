@@ -1,16 +1,18 @@
 ; Instalador do slidecut.
 ;
-; Instala o programa, cria os atalhos e resolve a unica dependencia externa:
-; o LibreOffice, usado para converter apresentacoes e documentos em PDF.
-; Ele nao pode ser embutido aqui (instalador proprio, ~350 MB, licenca MPL),
-; entao o setup detecta se ja existe e, se faltar, baixa o instalador oficial
-; e roda em silencio. O download e conferido pelo SHA-256 publicado pela
-; The Document Foundation antes de ser executado.
+; Instala o programa, cria os atalhos e resolve a dependencia de conversao.
+;
+; Converter apresentacoes e documentos em PDF exige Microsoft Office ou
+; LibreOffice. Quem tem Office nao precisa de mais nada — o programa usa o
+; proprio aplicativo que criou o arquivo. So quando a maquina nao tem nenhum
+; dos dois o setup oferece baixar o LibreOffice: ele nao pode ser embutido
+; aqui (instalador proprio, ~350 MB, licenca MPL). O download e conferido pelo
+; SHA-256 publicado pela The Document Foundation antes de ser executado.
 ;
 ; Compilar: ISCC.exe installer\slidecut.iss
 
 #define AppName        "slidecut"
-#define AppVersion     "0.2.0"
+#define AppVersion     "0.3.0"
 #define AppPublisher   "slidecut"
 #define AppExe         "slidecut.exe"
 
@@ -70,6 +72,22 @@ begin
     FileExists(ExpandConstant('{commonpf32}\LibreOffice\program\soffice.exe'));
 end;
 
+function MicrosoftOfficeInstalled(): Boolean;
+{ O programa prefere o Office quando ele existe: converte pelo proprio
+  aplicativo que criou o arquivo, com fidelidade exata e sem instalar nada.
+  Quem tem Office nao precisa baixar os 350 MB do LibreOffice. }
+begin
+  Result :=
+    RegKeyExists(HKEY_CLASSES_ROOT, 'PowerPoint.Application') or
+    RegKeyExists(HKEY_CLASSES_ROOT, 'Word.Application') or
+    RegKeyExists(HKEY_CLASSES_ROOT, 'Excel.Application');
+end;
+
+function ConverterAvailable(): Boolean;
+begin
+  Result := MicrosoftOfficeInstalled() or LibreOfficeInstalled();
+end;
+
 function OnDownloadProgress(const Url, Filename: String; const Progress, ProgressMax: Int64): Boolean;
 begin
   if ProgressMax > 0 then
@@ -98,13 +116,13 @@ begin
 
   if CurPageID = wpReady then
   begin
-    NeedsLibreOffice := not LibreOfficeInstalled();
+    NeedsLibreOffice := not ConverterAvailable();
     if NeedsLibreOffice then
     begin
       if MsgBox(
-        'O LibreOffice nao foi encontrado neste computador.' + #13#10#13#10 +
-        'Ele e necessario apenas para converter apresentacoes e documentos ' +
-        '(.pptx, .docx e afins) em PDF. Arquivos que ja sao PDF funcionam sem ele.' + #13#10#13#10 +
+        'Este computador nao tem Microsoft Office nem LibreOffice.' + #13#10#13#10 +
+        'Um dos dois e necessario apenas para converter apresentacoes e documentos ' +
+        '(.pptx, .docx e afins) em PDF. Arquivos que ja sao PDF funcionam sem eles.' + #13#10#13#10 +
         'Baixar e instalar o LibreOffice ' + '{#LoVersion}' + ' agora? ' +
         'Sao cerca de 350 MB.',
         mbConfirmation, MB_YESNO) = IDNO then
@@ -133,8 +151,8 @@ begin
           MsgBox(
             'Nao foi possivel instalar o LibreOffice automaticamente.' + #13#10#13#10 +
             'O {#AppName} sera instalado assim mesmo e ja funciona com arquivos PDF. ' +
-            'Para converter apresentacoes, instale o LibreOffice manualmente ' +
-            'em libreoffice.org.',
+            'Para converter apresentacoes, instale o Microsoft Office ou o ' +
+            'LibreOffice (libreoffice.org).',
             mbInformation, MB_OK);
       except
         MsgBox(
