@@ -17,3 +17,7 @@ class ConversionError(SlidecutError):
 
 class AnalysisError(SlidecutError):
     """PDF corrompido, protegido por senha ou ilegivel."""
+
+
+class NoDividerFound(SlidecutError):
+    """Nenhuma pagina divisora foi detectada (ou nenhuma bate com a cor pedida)."""

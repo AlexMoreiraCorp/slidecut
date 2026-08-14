@@ -51,6 +51,25 @@ slidecut "aula.pptx" --list
 
 Variável de ambiente `SLIDECUT_SOFFICE` aponta para o executável do LibreOffice quando ele não está no PATH.
 
+## Interface gráfica
+
+```bash
+.venv/Scripts/python.exe -m slidecut.gui
+```
+
+Selecionar arquivo (PDF ou slide/documento/planilha) → conferir/ajustar pasta de saída e cor
+opcional → "Pré-visualizar" (só mostra os cortes) ou "Cortar" (grava).
+
+## Gerar o executável (.exe)
+
+```bash
+.venv/Scripts/python.exe -m pip install -e ".[dev]"
+.venv/Scripts/pyinstaller.exe --noconfirm --onefile --windowed --name slidecut --paths src entry_gui.py
+```
+
+Gera `dist/slidecut.exe`, standalone (não precisa Python instalado na máquina que for rodar —
+só o LibreOffice, e apenas se for converter algo que não seja PDF).
+
 ## Formatos aceitos
 
 | Categoria | Extensões |

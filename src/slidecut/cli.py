@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tempfile
-from pathlib import Path
 
-from . import analyze, convert, split, titles
+from . import analyze, core
 from .errors import SlidecutError
 
 EXIT_OK = 0
 EXIT_ERROR = 2
-
-OUTPUT_SUFFIX = " - cortes"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,61 +55,34 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def default_outdir(source: Path) -> Path:
-    return source.parent / f"{source.stem}{OUTPUT_SUFFIX}"
-
-
-def _report_plan(chapters: list[split.Chapter], divider_color: str) -> None:
-    print(f"Cor divisora: {divider_color}")
-    print(f"Capitulos detectados: {len(chapters)}\n")
-    for number, chapter in enumerate(chapters, start=1):
+def _report_plan(result: core.ProcessResult) -> None:
+    print(f"Cor divisora: {result.divider_color_hex}")
+    print(f"Capitulos detectados: {len(result.chapters)}\n")
+    for number, chapter in enumerate(result.chapters, start=1):
         pages = f"{chapter.start + 1}-{chapter.end}"
         print(f"  {number:02d}. {chapter.title}  (paginas {pages}, {chapter.page_count})")
 
 
 def run(args: argparse.Namespace) -> int:
-    source = Path(args.input).expanduser()
     color = analyze.parse_color(args.color) if args.color else None
 
-    with tempfile.TemporaryDirectory(prefix="slidecut-") as workdir:
-        pdf_path = convert.to_pdf(source, workdir)
-
-        colors = analyze.page_colors(pdf_path)
-        target = color or analyze.find_divider_color(colors, args.tolerance, args.min_coverage)
-        if target is None:
-            print(
-                "Nenhuma pagina divisora detectada. Informe a cor com --color "
-                "(ex.: --color #B06E03) ou afrouxe --tolerance.",
-                file=sys.stderr,
-            )
-            return EXIT_ERROR
-
-        dividers = analyze.find_dividers(
-            pdf_path,
-            color=target,
+    try:
+        result = core.process(
+            args.input,
+            outdir=args.out,
+            color=color,
             tolerance=args.tolerance,
             min_coverage=args.min_coverage,
-            colors=colors,
+            ascii_only=args.ascii,
+            list_only=args.list,
         )
-        if not dividers:
-            print(
-                f"Nenhuma pagina bate com a cor {target}. Ajuste --color ou --tolerance.",
-                file=sys.stderr,
-            )
-            return EXIT_ERROR
+    except SlidecutError as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        return EXIT_ERROR
 
-        chapter_titles = titles.page_titles(pdf_path, dividers, ascii_only=args.ascii)
-        chapters = split.build_chapters(dividers, len(colors), chapter_titles)
-        hex_color = "#{:02X}{:02X}{:02X}".format(*target)
-
-        _report_plan(chapters, hex_color)
-        if args.list:
-            return EXIT_OK
-
-        outdir = Path(args.out).expanduser() if args.out else default_outdir(source)
-        written = split.write_chapters(pdf_path, chapters, outdir)
-
-    print(f"\n{len(written)} arquivos gravados em {outdir}")
+    _report_plan(result)
+    if not args.list:
+        print(f"\n{len(result.written)} arquivos gravados em {result.outdir}")
     return EXIT_OK
 
 

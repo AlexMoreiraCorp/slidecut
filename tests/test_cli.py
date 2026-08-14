@@ -58,7 +58,7 @@ def test_ascii_flag_produces_ascii_filenames(tmp_path, capsys):
 
 def test_color_that_matches_nothing_returns_error_code(deck, tmp_path, capsys):
     assert cli.main([str(deck), "--color", "#00FF00", "-o", str(tmp_path / "out")]) == 2
-    assert "tolerance" in capsys.readouterr().err
+    assert "--tolerance" in capsys.readouterr().err
 
 
 def test_corrupt_pdf_returns_error_code(tmp_path, capsys):
