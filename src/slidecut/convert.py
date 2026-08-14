@@ -43,6 +43,11 @@ def find_soffice() -> Path | None:
     return None
 
 
+def needs_conversion(source: str | Path) -> bool:
+    """Diz se o arquivo precisa passar pelo LibreOffice antes do corte."""
+    return Path(source).suffix.lower() != ".pdf"
+
+
 def to_pdf(source: str | Path, workdir: str | Path) -> Path:
     """Devolve um PDF equivalente a entrada. PDFs de entrada passam direto."""
     source = Path(source)

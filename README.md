@@ -57,8 +57,20 @@ Variável de ambiente `SLIDECUT_SOFFICE` aponta para o executável do LibreOffic
 .venv/Scripts/python.exe -m slidecut.gui
 ```
 
-Selecionar arquivo (PDF ou slide/documento/planilha) → conferir/ajustar pasta de saída e cor
-opcional → "Pré-visualizar" (só mostra os cortes) ou "Cortar" (grava).
+Fluxo em duas telas:
+
+1. **Escolher o arquivo.** Se não for PDF, o programa avisa que precisa converter e pede
+   confirmação antes de chamar o LibreOffice. O arquivo original nunca é alterado.
+2. **Escolher os cortes.** Todas as páginas aparecem como miniaturas. A detecção por cor entra
+   apenas como **sugestão inicial** — quem decide é você, marcando e desmarcando páginas.
+   Isso cobre o que a cor não pega: slide só com título, divisor com foto de fundo, template
+   sem cor chapada.
+
+Cada página marcada abre um capítulo novo e ganha um campo de nome editável, já preenchido com
+o texto da própria página. Útil quando o corte cai numa página de conteúdo, cujo texto corrido
+daria um nome ruim.
+
+Botões `Usar sugestão por cor` e `Limpar marcas` refazem a seleção inteira de uma vez.
 
 ## Gerar o executável (.exe)
 
@@ -105,4 +117,9 @@ Testes lentos (`-m slow`) sobem o LibreOffice de verdade e são pulados se ele n
 | `analyze.py` | Cor dominante por página e detecção dos divisores |
 | `titles.py` | Título do slide → nome de arquivo válido |
 | `split.py` | Intervalos de páginas → PDFs de saída |
+| `preview.py` | Miniatura e legenda de cada página |
+| `core.py` | Fluxo compartilhado: automático (`process`) e manual (`prepare` + `cut_at`) |
 | `cli.py` | Argumentos, relatório e código de saída |
+| `gui.py` | Janela: escolha do arquivo e seleção manual dos cortes |
+
+A CLI continua 100% automática (útil em lote); o modo manual existe só na interface gráfica.

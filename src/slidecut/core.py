@@ -1,7 +1,12 @@
-"""Fluxo completo (converter, detectar cor, cortar), reutilizado por CLI e GUI.
+"""Fluxo de conversao e corte, reutilizado por CLI e GUI.
 
-Mantido separado das interfaces para que CLI e GUI cheguem sempre ao mesmo
-resultado e so difiram em como mostram o progresso ao usuario.
+Dois modos partem do mesmo lugar:
+
+- automatico (CLI): process() converte, detecta a cor divisora e grava tudo.
+- manual (GUI): prepare() converte e devolve uma sugestao de cortes; o usuario
+  ajusta a selecao olhando as paginas; cut_at() grava o que ele marcou.
+
+Manter isto fora das interfaces garante que os dois modos cortem igual.
 """
 
 from __future__ import annotations
@@ -20,10 +25,25 @@ ProgressCallback = Callable[[str], None]
 
 
 @dataclass(frozen=True)
-class ProcessResult:
-    """Resultado de um corte: cor achada, capitulos e (se gravado) os arquivos."""
+class PreparedDocument:
+    """PDF pronto para ser cortado, com a sugestao automatica de divisores.
 
-    divider_color_hex: str
+    O PDF apontado por pdf_path pode ser um arquivo temporario da conversao;
+    quem chamou prepare() e dono do workdir e responsavel por apaga-lo.
+    """
+
+    source: Path
+    pdf_path: Path
+    page_count: int
+    suggested_dividers: list[int]
+    divider_color_hex: str | None
+
+
+@dataclass(frozen=True)
+class ProcessResult:
+    """Resultado de um corte: cor usada, capitulos e (se gravado) os arquivos."""
+
+    divider_color_hex: str | None
     chapters: list[split.Chapter]
     outdir: Path
     written: list[Path] = field(default_factory=list)
@@ -38,6 +58,88 @@ def _notify(on_progress: ProgressCallback | None, message: str) -> None:
         on_progress(message)
 
 
+def prepare(
+    source: str | Path,
+    workdir: str | Path,
+    color: tuple[int, int, int] | None = None,
+    tolerance: float = analyze.DEFAULT_TOLERANCE,
+    min_coverage: float = analyze.MIN_COVERAGE,
+    on_progress: ProgressCallback | None = None,
+) -> PreparedDocument:
+    """Converte a entrada para PDF e sugere onde cortar.
+
+    Nao levanta erro quando nada e detectado: no modo manual o usuario ainda
+    pode marcar os cortes na mao.
+    """
+    source = Path(source).expanduser()
+
+    _notify(on_progress, f"Preparando {source.name}...")
+    pdf_path = convert.to_pdf(source, workdir)
+
+    _notify(on_progress, "Analisando cores das paginas...")
+    colors = analyze.page_colors(pdf_path)
+    target = color or analyze.find_divider_color(colors, tolerance, min_coverage)
+
+    if target is None:
+        _notify(on_progress, "Nenhuma cor divisora detectada; marque os cortes na mao.")
+        return PreparedDocument(source, pdf_path, len(colors), [], None)
+
+    dividers = analyze.find_dividers(
+        pdf_path, color=target, tolerance=tolerance, min_coverage=min_coverage, colors=colors
+    )
+    hex_color = "#{:02X}{:02X}{:02X}".format(*target)
+    _notify(on_progress, f"Cor divisora: {hex_color} ({len(dividers)} paginas)")
+
+    return PreparedDocument(source, pdf_path, len(colors), dividers, hex_color)
+
+
+def normalise_dividers(dividers: list[int], page_count: int) -> list[int]:
+    """Ordena, tira repetidos e descarta paginas fora do documento."""
+    return sorted({d for d in dividers if 0 <= d < page_count})
+
+
+def cut_at(
+    document: PreparedDocument,
+    dividers: list[int],
+    outdir: str | Path | None = None,
+    ascii_only: bool = False,
+    list_only: bool = False,
+    custom_titles: dict[int, str] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> ProcessResult:
+    """Grava um arquivo por capitulo usando exatamente os cortes informados.
+
+    custom_titles substitui o nome lido da pagina, por indice. Serve para quando
+    o corte cai numa pagina de conteudo, cujo texto corrido daria um nome ruim.
+    Entradas em branco voltam a usar o texto da pagina.
+    """
+    clean = normalise_dividers(dividers, document.page_count)
+    if not clean:
+        raise NoDividerFound("nenhuma pagina de corte selecionada.")
+
+    resolved_outdir = (
+        Path(outdir).expanduser() if outdir else default_outdir(document.source)
+    )
+
+    chapter_titles = titles.page_titles(document.pdf_path, clean, ascii_only=ascii_only)
+    if custom_titles:
+        chapter_titles = [
+            titles.safe_filename(custom_titles[index], ascii_only)
+            if custom_titles.get(index, "").strip()
+            else fallback
+            for index, fallback in zip(clean, chapter_titles)
+        ]
+    chapters = split.build_chapters(clean, document.page_count, chapter_titles)
+    _notify(on_progress, f"{len(chapters)} capitulos identificados.")
+
+    if list_only:
+        return ProcessResult(document.divider_color_hex, chapters, resolved_outdir, written=[])
+
+    written = split.write_chapters(document.pdf_path, chapters, resolved_outdir)
+    _notify(on_progress, f"{len(written)} arquivos gravados em {resolved_outdir}")
+    return ProcessResult(document.divider_color_hex, chapters, resolved_outdir, written=written)
+
+
 def process(
     source: str | Path,
     outdir: str | Path | None = None,
@@ -48,46 +150,32 @@ def process(
     list_only: bool = False,
     on_progress: ProgressCallback | None = None,
 ) -> ProcessResult:
-    """Converte, detecta os divisores e (a menos que list_only) grava os capitulos.
+    """Corte automatico ponta a ponta: converte, detecta a cor e grava.
 
-    Levanta SlidecutError (ou subclasse) quando a entrada e invalida, a conversao
-    falha ou nenhum divisor e encontrado.
+    Levanta SlidecutError (ou subclasse) quando a entrada e invalida, a
+    conversao falha ou nenhum divisor e encontrado.
     """
     source = Path(source).expanduser()
     resolved_outdir = Path(outdir).expanduser() if outdir else default_outdir(source)
 
     with tempfile.TemporaryDirectory(prefix="slidecut-") as workdir:
-        _notify(on_progress, f"Convertendo {source.name} para PDF...")
-        pdf_path = convert.to_pdf(source, workdir)
+        document = prepare(source, workdir, color, tolerance, min_coverage, on_progress)
 
-        _notify(on_progress, "Analisando cores das paginas...")
-        colors = analyze.page_colors(pdf_path)
-        target = color or analyze.find_divider_color(colors, tolerance, min_coverage)
-        if target is None:
+        if not document.suggested_dividers:
+            if color is None:
+                raise NoDividerFound(
+                    "nenhuma pagina divisora detectada. Informe a cor com --color "
+                    "(ex.: --color #B06E03) ou afrouxe a tolerancia."
+                )
             raise NoDividerFound(
-                "nenhuma pagina divisora detectada. Informe a cor com --color "
-                "(ex.: --color #B06E03) ou afrouxe a tolerancia."
+                f"nenhuma pagina bate com a cor {color}. Ajuste --color ou --tolerance."
             )
 
-        dividers = analyze.find_dividers(
-            pdf_path, color=target, tolerance=tolerance, min_coverage=min_coverage, colors=colors
+        return cut_at(
+            document,
+            document.suggested_dividers,
+            outdir=resolved_outdir,
+            ascii_only=ascii_only,
+            list_only=list_only,
+            on_progress=on_progress,
         )
-        if not dividers:
-            raise NoDividerFound(
-                f"nenhuma pagina bate com a cor {target}. Ajuste --color ou --tolerance."
-            )
-
-        hex_color = "#{:02X}{:02X}{:02X}".format(*target)
-        _notify(on_progress, f"Cor divisora: {hex_color} ({len(dividers)} paginas)")
-
-        chapter_titles = titles.page_titles(pdf_path, dividers, ascii_only=ascii_only)
-        chapters = split.build_chapters(dividers, len(colors), chapter_titles)
-        _notify(on_progress, f"{len(chapters)} capitulos identificados.")
-
-        if list_only:
-            return ProcessResult(hex_color, chapters, resolved_outdir, written=[])
-
-        written = split.write_chapters(pdf_path, chapters, resolved_outdir)
-        _notify(on_progress, f"{len(written)} arquivos gravados em {resolved_outdir}")
-
-    return ProcessResult(hex_color, chapters, resolved_outdir, written=written)

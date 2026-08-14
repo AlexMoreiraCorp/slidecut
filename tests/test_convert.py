@@ -123,3 +123,13 @@ def test_non_executable_override_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setattr(convert.shutil, "which", lambda name: None)
     monkeypatch.setattr(convert, "SOFFICE_CANDIDATES", ())
     assert convert.find_soffice() is None
+
+
+def test_needs_conversion_is_false_for_pdf(tmp_path):
+    assert not convert.needs_conversion(tmp_path / "ja.pdf")
+    assert not convert.needs_conversion(tmp_path / "MAIUSCULO.PDF")
+
+
+def test_needs_conversion_is_true_for_slides_and_documents(tmp_path):
+    assert convert.needs_conversion(tmp_path / "aula.pptx")
+    assert convert.needs_conversion(tmp_path / "texto.docx")
