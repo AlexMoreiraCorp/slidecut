@@ -177,6 +177,71 @@ def parse_dropped_path(payload: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
+def parse_dropped_paths(payload: str) -> list[Path]:
+    """Extrai todos os caminhos do texto que o Windows entrega ao soltar arquivos.
+
+    O TkDND devolve uma lista no formato do Tcl: caminhos com espaco vem entre
+    chaves, os demais soltos, tudo separado por espaco. Entradas que nao
+    existem mais no disco sao descartadas.
+    """
+    paths: list[Path] = []
+    rest = payload.strip()
+    while rest:
+        if rest.startswith("{"):
+            token, _, rest = rest[1:].partition("}")
+            rest = rest.strip()
+        else:
+            token, _, rest = rest.partition(" ")
+            rest = rest.strip()
+        if not token:
+            continue
+        candidate = Path(token)
+        if candidate.exists():
+            paths.append(candidate)
+    return paths
+
+
+def most_common_extension(paths: list[Path]) -> str:
+    """Extensao (minuscula) que mais aparece na lista. Empate: a primeira vista."""
+    counts: dict[str, int] = {}
+    order: list[str] = []
+    for path in paths:
+        ext = path.suffix.lower()
+        if ext not in counts:
+            counts[ext] = 0
+            order.append(ext)
+        counts[ext] += 1
+    return max(order, key=lambda ext: counts[ext])
+
+
+def has_mixed_formats(paths: list[Path]) -> bool:
+    """Diz se a lista tem mais de uma extensao (comparacao sem diferenciar caixa)."""
+    return len({p.suffix.lower() for p in paths}) > 1
+
+
+def filter_by_extension(paths: list[Path], extension: str) -> list[Path]:
+    """So os arquivos cuja extensao bate com a informada, preservando a ordem."""
+    return [p for p in paths if p.suffix.lower() == extension.lower()]
+
+
+def batch_confirm_prompt(count: int) -> str:
+    return (
+        f"Você soltou {count} arquivos.\n\n"
+        "Deseja processá-los em lote, todos de uma vez?\n\n"
+        "Se preferir, clique em Não para usar apenas o primeiro arquivo."
+    )
+
+
+def mixed_formats_prompt(extensions: set[str]) -> str:
+    lista = ", ".join(sorted(extensions))
+    return (
+        f"Os arquivos soltos têm formatos diferentes ({lista}).\n\n"
+        "Deseja processar todos mesmo assim?\n\n"
+        "Se preferir, clique em Não para manter apenas os arquivos do formato "
+        "mais comum entre eles."
+    )
+
+
 # ------------------------------------------------------------------ janela
 class SlidecutApp:
     def __init__(self, root: tk.Tk) -> None:
@@ -235,11 +300,9 @@ class SlidecutApp:
         self.header_file = ttk.Label(bar, text="", style="BrandSub.TLabel")
         self.header_file.pack(side="left", padx=16)
 
-        self.batch_button = tk.Button(
-            bar, text="Processar vários arquivos", command=self._show_batch,
-            background=theme.INK, foreground="#C7D4E3", activebackground=theme.INK,
-            activeforeground=theme.SURFACE, relief="flat", borderwidth=0,
-            font=self.fonts.small, cursor="hand2", padx=10,
+        self.batch_button = ttk.Button(
+            bar, text="Vários arquivos de uma vez", style="Header.TButton",
+            command=self._show_batch,
         )
         self.batch_button.pack(side="right", padx=18)
 
@@ -378,6 +441,14 @@ class SlidecutApp:
         ttk.Label(column, text=detail, style="SurfaceFaint.TLabel",
                   wraplength=440, justify="left").pack(anchor="w")
 
+        tk.Frame(inner, background=theme.EDGE_SOFT, height=1).pack(fill="x", pady=(16, 12))
+        batch_row = ttk.Frame(inner, style="Surface.TFrame")
+        batch_row.pack(fill="x")
+        ttk.Label(batch_row, text="Precisa processar vários arquivos de uma vez?",
+                  style="SurfaceMuted.TLabel").pack(side="left")
+        ttk.Button(batch_row, text="Abrir o modo em lote →", style="Quiet.TButton",
+                  command=self._show_batch).pack(side="left", padx=(10, 0))
+
         self.open_progress = ttk.Progressbar(
             self.open_screen, mode="indeterminate", style="Cut.Horizontal.TProgressbar")
 
@@ -404,11 +475,38 @@ class SlidecutApp:
         self._highlight_drop(False)
         if self.busy:
             return
-        path = parse_dropped_path(event.data)
-        if path is None:
-            messagebox.showwarning(WINDOW_TITLE, "Não consegui ler o arquivo solto na janela.")
+
+        paths = parse_dropped_paths(event.data)
+        if not paths:
+            messagebox.showwarning(WINDOW_TITLE, "Não consegui ler o(s) arquivo(s) solto(s) na janela.")
             return
-        self._set_input(path)
+
+        if len(paths) == 1:
+            self._set_input(paths[0])
+            return
+
+        if not messagebox.askyesno(WINDOW_TITLE, batch_confirm_prompt(len(paths))):
+            self._set_input(paths[0])
+            return
+
+        if has_mixed_formats(paths):
+            if not messagebox.askyesno(WINDOW_TITLE, mixed_formats_prompt(
+                {p.suffix.lower() for p in paths}
+            )):
+                paths = filter_by_extension(paths, most_common_extension(paths))
+
+        self._show_batch()
+        self._batch_set_files(paths)
+
+    def _batch_set_files(self, paths: list[Path]) -> None:
+        """Substitui a lista do lote pelos arquivos informados."""
+        self._batch_files = []
+        self.batch_listbox.delete(0, "end")
+        for path in paths:
+            if path not in self._batch_files:
+                self._batch_files.append(path)
+                self.batch_listbox.insert("end", path.name)
+        self.batch_status.configure(text=f"{len(self._batch_files)} arquivo(s) na lista")
 
     # ------------------------------------------------------- tela: folha
     def _build_sheet_screen(self) -> None:
@@ -494,6 +592,8 @@ class SlidecutApp:
         top.pack(fill="x")
         ttk.Button(top, text="Adicionar arquivos...", style="Quiet.TButton",
                   command=self._batch_add_files).pack(side="left")
+        ttk.Button(top, text="Remover selecionado(s)", style="Quiet.TButton",
+                  command=self._batch_remove_selected).pack(side="left", padx=8)
         ttk.Button(top, text="Limpar lista", style="Quiet.TButton",
                   command=self._batch_clear).pack(side="left", padx=8)
         ttk.Button(top, text="Voltar", style="Quiet.TButton",
@@ -528,8 +628,10 @@ class SlidecutApp:
             listwrap, background=theme.SURFACE, foreground=theme.INK,
             selectbackground=theme.CUT_SOFT, selectforeground=theme.INK,
             borderwidth=0, highlightthickness=0, font=self.fonts.body, activestyle="none",
+            selectmode="extended",
         )
         self.batch_listbox.pack(fill="both", expand=True, padx=1, pady=1)
+        self.batch_listbox.bind("<Delete>", lambda _e: self._batch_remove_selected())
 
         footer = tk.Frame(self.batch_screen, background=theme.SURFACE, height=64)
         footer.pack(side="bottom", fill="x")
@@ -568,6 +670,16 @@ class SlidecutApp:
         self._batch_files.clear()
         self.batch_listbox.delete(0, "end")
         self.batch_status.configure(text="")
+
+    def _batch_remove_selected(self) -> None:
+        """Tira da lista os arquivos marcados, sem mexer nos demais."""
+        selected = self.batch_listbox.curselection()
+        if not selected:
+            return
+        for index in sorted(selected, reverse=True):
+            self.batch_listbox.delete(index)
+            del self._batch_files[index]
+        self.batch_status.configure(text=f"{len(self._batch_files)} arquivo(s) na lista")
 
     def _on_batch_run(self) -> None:
         if self.busy or not self._batch_files:

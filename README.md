@@ -175,8 +175,17 @@ seguidas não custa nada.
 
 ## Vários arquivos de uma vez (lote)
 
-Botão "Processar vários arquivos" no cabeçalho da janela. Aceita a mesma lista de formatos de
-sempre, dois modos:
+Dois jeitos de entrar nesse modo: o botão "Vários arquivos de uma vez" no cabeçalho, ou o link
+"Abrir o modo em lote" logo abaixo da zona de arrastar, na tela inicial.
+
+**Arrastar vários arquivos direto na tela também funciona.** Ao soltar mais de um arquivo na zona
+de arrastar, o programa pergunta se você quer processá-los em lote; se responder que não, usa
+só o primeiro. Se os arquivos tiverem formatos diferentes, uma segunda pergunta oferece continuar
+com todos ou manter só os do formato mais comum entre eles.
+
+Na lista do lote dá para adicionar mais arquivos, remover os que não interessam (selecionar e
+apertar Delete, ou o botão "Remover selecionado(s)") e limpar tudo. Aceita a mesma lista de
+formatos de sempre, dois modos:
 
 - **Cortar cada arquivo em capítulos** — cada entrada vai para sua própria subpasta dentro da
   pasta de saída escolhida, nomeada com o nome do arquivo original.

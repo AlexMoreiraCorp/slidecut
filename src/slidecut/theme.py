@@ -121,6 +121,19 @@ def apply(root: tk.Misc, fonts: Fonts) -> ttk.Style:
         bordercolor=[("disabled", "#DEE3E9")],
     )
 
+    # Botao do cabecalho (fundo escuro): contorno claro, sem laranja — laranja
+    # e reservado para "cortar aqui", e este botao abre outra tela, nao corta.
+    style.configure(
+        "Header.TButton", background=INK, foreground=SURFACE, bordercolor="#5A7291",
+        lightcolor=INK, darkcolor=INK, focuscolor=SURFACE, relief="flat",
+        padding=(14, 8), font=fonts.body,
+    )
+    style.map(
+        "Header.TButton",
+        background=[("pressed", INK_LINE), ("active", INK_LINE)],
+        bordercolor=[("active", SURFACE)],
+    )
+
     style.configure(
         "TEntry", fieldbackground=SURFACE, bordercolor=EDGE, lightcolor=EDGE,
         darkcolor=EDGE, insertcolor=INK, padding=6,

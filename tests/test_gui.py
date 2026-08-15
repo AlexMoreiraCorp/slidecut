@@ -144,3 +144,59 @@ def test_batch_summary_all_ok_has_no_failure_list():
 def test_batch_item_label_shows_position_and_name(tmp_path):
     texto = gui.batch_item_label(2, 5, tmp_path / "Aula 03.pptx")
     assert texto == "Arquivo 2 de 5: Aula 03.pptx"
+
+
+def test_parse_dropped_paths_reads_several_braced_entries(tmp_path):
+    a = tmp_path / "Aula 01.pptx"
+    b = tmp_path / "Aula 02.pdf"
+    a.write_bytes(b"x")
+    b.write_bytes(b"x")
+    payload = "{" + str(a) + "} {" + str(b) + "}"
+    assert gui.parse_dropped_paths(payload) == [a, b]
+
+
+def test_parse_dropped_paths_reads_a_single_unbraced_path(tmp_path):
+    a = tmp_path / "aula.pdf"
+    a.write_bytes(b"x")
+    assert gui.parse_dropped_paths(str(a)) == [a]
+
+
+def test_parse_dropped_paths_skips_entries_that_do_not_exist(tmp_path):
+    a = tmp_path / "existe.pdf"
+    a.write_bytes(b"x")
+    payload = "{" + str(a) + "} {" + str(tmp_path / "sumiu.pdf") + "}"
+    assert gui.parse_dropped_paths(payload) == [a]
+
+
+def test_parse_dropped_paths_of_empty_text_is_empty():
+    assert gui.parse_dropped_paths("") == []
+
+
+def test_most_common_extension_picks_the_majority(tmp_path):
+    paths = [tmp_path / "a.pptx", tmp_path / "b.pptx", tmp_path / "c.pdf"]
+    assert gui.most_common_extension(paths) == ".pptx"
+
+
+def test_most_common_extension_breaks_ties_by_first_seen(tmp_path):
+    paths = [tmp_path / "a.docx", tmp_path / "b.pptx"]
+    assert gui.most_common_extension(paths) == ".docx"
+
+
+def test_has_mixed_formats_detects_different_extensions(tmp_path):
+    assert gui.has_mixed_formats([tmp_path / "a.pptx", tmp_path / "b.pdf"])
+    assert not gui.has_mixed_formats([tmp_path / "a.pptx", tmp_path / "b.PPTX"])
+
+
+def test_filter_by_extension_keeps_only_matches(tmp_path):
+    paths = [tmp_path / "a.pptx", tmp_path / "b.pdf", tmp_path / "c.PPTX"]
+    assert gui.filter_by_extension(paths, ".pptx") == [tmp_path / "a.pptx", tmp_path / "c.PPTX"]
+
+
+def test_batch_confirm_prompt_mentions_the_count():
+    assert "3" in gui.batch_confirm_prompt(3)
+    assert "lote" in gui.batch_confirm_prompt(3).lower()
+
+
+def test_mixed_formats_prompt_lists_the_extensions_found():
+    texto = gui.mixed_formats_prompt({".pptx", ".pdf"})
+    assert ".pptx" in texto and ".pdf" in texto
