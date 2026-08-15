@@ -79,8 +79,8 @@ Variável de ambiente `SLIDECUT_SOFFICE` aponta para o executável do LibreOffic
 
 Fluxo em duas telas:
 
-1. **Escolher o arquivo.** Se não for PDF, o programa avisa que precisa converter e pede
-   confirmação antes de chamar o LibreOffice. O arquivo original nunca é alterado.
+1. **Escolher o arquivo** — arrastando para a janela ou pelo seletor. Se não for PDF, o programa
+   diz qual conversor vai usar e pede confirmação. O arquivo original nunca é alterado.
 2. **Escolher os cortes.** Todas as páginas aparecem como miniaturas. A detecção por cor entra
    apenas como **sugestão inicial** — quem decide é você, marcando e desmarcando páginas.
    Isso cobre o que a cor não pega: slide só com título, divisor com foto de fundo, template
@@ -149,5 +149,22 @@ Testes lentos (`-m slow`) sobem o LibreOffice de verdade e são pulados se ele n
 | `cli.py` | Argumentos, relatório e código de saída |
 | `gui.py` | Janela: escolha do arquivo e seleção manual dos cortes |
 | `resources.py` | Localiza o ícone, no fonte e no executável congelado |
+| `theme.py` | Cores, fontes e estilos ttk da janela |
 
 A CLI continua 100% automática (útil em lote); o modo manual existe só na interface gráfica.
+
+## Sistema visual
+
+A janela segue uma regra só: **laranja quer dizer "cortar aqui", e nada mais.** Nenhum botão
+decorativo, nenhum destaque gratuito usa laranja — assim a interface fala a mesma língua do
+conteúdo, já que o programa procura justamente slides divisores coloridos. O único botão
+preenchido de laranja é o que gera os cortes.
+
+O resto é azul-tinta no cabeçalho e papel cinza-frio na área de trabalho, como uma mesa de luz
+onde se inspecionam páginas. Tipografia: Bahnschrift (DIN, sinalização técnica) nos rótulos,
+Segoe UI no texto, Cascadia Mono nos números de página. Os tokens estão em `theme.py`.
+
+Na folha de contato, cada corte marcado abre uma faixa de capítulo e as páginas se reagrupam
+embaixo dela — dá para ver os arquivos se formando antes de gerar. O rearranjo é adiado 120 ms
+após o último clique e leva cerca de 0,3 s numa folha de 145 páginas; marcar várias páginas
+seguidas não custa nada.

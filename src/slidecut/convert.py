@@ -68,6 +68,16 @@ def available_converter(suffix: str) -> str | None:
     return None
 
 
+def converter_status(suffix: str = ".pptx") -> tuple[bool, str]:
+    """(tem conversor, frase pronta) para mostrar na tela de abertura."""
+    name = available_converter(suffix)
+    if name == "Microsoft Office":
+        return True, "Apresentações serão convertidas pelo Microsoft Office"
+    if name == "LibreOffice":
+        return True, "Apresentações serão convertidas pelo LibreOffice"
+    return False, "Nenhum conversor encontrado — só é possível cortar PDFs"
+
+
 def to_pdf(
     source: str | Path,
     workdir: str | Path,
@@ -97,8 +107,15 @@ def to_pdf(
         _notify(on_progress, "Convertendo com o Microsoft Office...")
         try:
             return office.to_pdf(source, workdir)
-        except ConversionError as exc:
-            _notify(on_progress, f"Office nao deu conta ({exc}); tentando o LibreOffice...")
+        except ConversionError:
+            # O erro cru do COM nao ajuda quem esta olhando a tela, e assusta.
+            # Alguns arquivos simplesmente nao sao exportaveis pelo Office
+            # (defeito interno do proprio arquivo); o LibreOffice costuma dar
+            # conta deles, e a troca de conversor nao muda o resultado do corte.
+            _notify(
+                on_progress,
+                "O Office não conseguiu abrir este arquivo. Usando o LibreOffice.",
+            )
 
     soffice = find_soffice()
     if soffice is None:

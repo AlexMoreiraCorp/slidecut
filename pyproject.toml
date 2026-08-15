@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slidecut"
-version = "0.3.0"
+version = "0.4.0"
 description = "Converte apresentacoes e documentos para PDF e corta em capitulos nas paginas divisoras coloridas."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,6 +12,7 @@ dependencies = [
     "pymupdf>=1.24",
     "pypdf>=4.0",
     "pywin32>=306; sys_platform == 'win32'",
+    "tkinterdnd2>=0.4",
 ]
 
 [project.optional-dependencies]
