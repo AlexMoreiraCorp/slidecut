@@ -275,6 +275,7 @@ class SlidecutApp:
         self._events: queue.Queue[tuple[str, object]] = queue.Queue()
 
         self._build_header()
+        self._build_credit_strip()
         self._build_open_screen()
         self._build_sheet_screen()
         self._build_batch_screen()
@@ -301,13 +302,44 @@ class SlidecutApp:
         self.header_file = ttk.Label(bar, text="", style="BrandSub.TLabel")
         self.header_file.pack(side="left", padx=16)
 
-        self.batch_button = ttk.Button(
-            bar, text="Vários arquivos de uma vez", style="Header.TButton",
-            command=self._show_batch,
-        )
-        self.batch_button.pack(side="right", padx=18)
 
-        ttk.Label(bar, text=CREDIT, style="BrandFaint.TLabel").pack(side="right", padx=(0, 4))
+    def _build_credit_strip(self) -> None:
+        """Faixa fina e discreta no rodape, visivel em qualquer tela."""
+        strip = tk.Frame(self.root, background=theme.PAPER, height=22)
+        strip.pack(side="bottom", fill="x")
+        strip.pack_propagate(False)
+        tk.Label(strip, text=CREDIT, background=theme.PAPER, foreground=theme.SLATE_LIGHT,
+                font=self.fonts.tiny).pack(side="right", padx=12)
+
+    def _build_mode_tabs(self, parent: tk.Widget, active: str) -> None:
+        """Abas 'Um arquivo' / 'Vários arquivos de uma vez', no topo do cartão.
+
+        Existia so um link discreto no rodape da tela e um botao pequeno no
+        cabecalho escuro — ambos passavam despercebidos (feedback real de uso).
+        Aba e o padrao que ninguem deixa de notar: e a primeira coisa vista ao
+        abrir a tela, nao um extra que precisa ser descoberto.
+        """
+        tabs = tk.Frame(parent, background=theme.SURFACE)
+        tabs.pack(fill="x")
+        self._make_tab(tabs, "Um arquivo", active == "single", self._show_open)
+        self._make_tab(tabs, "Vários arquivos de uma vez", active == "batch", self._show_batch)
+
+    def _make_tab(self, parent: tk.Widget, text: str, is_active: bool, command) -> None:
+        fill = theme.SURFACE if is_active else theme.SURFACE_SUNK
+        fg = theme.INK if is_active else theme.SLATE
+        font = self.fonts.body_bold if is_active else self.fonts.body
+
+        outer = tk.Frame(parent, background=fill, cursor="hand2")
+        outer.pack(side="left", fill="both", expand=True)
+        label = tk.Label(outer, text=text, background=fill, foreground=fg, font=font, pady=13)
+        label.pack(fill="both", expand=True)
+        # Sublinha na cor do topo (INK), nao laranja: laranja e reservado para
+        # "cortar aqui" em algum lugar do fluxo, e escolher a aba nao e um corte.
+        tk.Frame(outer, background=theme.INK if is_active else fill, height=3).pack(
+            fill="x", side="bottom")
+
+        for widget in (outer, label):
+            widget.bind("<Button-1>", lambda _e: command())
 
     # -------------------------------------------------------- tela: abrir
     def _build_open_screen(self) -> None:
@@ -329,6 +361,9 @@ class SlidecutApp:
         card = tk.Frame(outer, background=theme.SURFACE, highlightthickness=1,
                         highlightbackground=theme.EDGE, highlightcolor=theme.EDGE)
         card.pack()
+
+        self._build_mode_tabs(card, active="single")
+
         inner = ttk.Frame(card, style="Surface.TFrame", padding=(36, 30, 36, 26))
         inner.pack()
 
@@ -443,14 +478,6 @@ class SlidecutApp:
             detail = "Arquivos que já são PDF continuam funcionando."
         ttk.Label(column, text=detail, style="SurfaceFaint.TLabel",
                   wraplength=440, justify="left").pack(anchor="w")
-
-        tk.Frame(inner, background=theme.EDGE_SOFT, height=1).pack(fill="x", pady=(16, 12))
-        batch_row = ttk.Frame(inner, style="Surface.TFrame")
-        batch_row.pack(fill="x")
-        ttk.Label(batch_row, text="Precisa processar vários arquivos de uma vez?",
-                  style="SurfaceMuted.TLabel").pack(side="left")
-        ttk.Button(batch_row, text="Abrir o modo em lote →", style="Quiet.TButton",
-                  command=self._show_batch).pack(side="left", padx=(10, 0))
 
         self.open_progress = ttk.Progressbar(
             self.open_screen, mode="indeterminate", style="Cut.Horizontal.TProgressbar")
@@ -581,6 +608,8 @@ class SlidecutApp:
     def _build_batch_screen(self) -> None:
         self.batch_screen = ttk.Frame(self.root, style="Paper.TFrame")
 
+        self._build_mode_tabs(self.batch_screen, active="batch")
+
         header = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 18, 24, 8))
         header.pack(fill="x")
         ttk.Label(header, text="Vários arquivos de uma vez", style="PaperTitle.TLabel"
@@ -599,8 +628,6 @@ class SlidecutApp:
                   command=self._batch_remove_selected).pack(side="left", padx=8)
         ttk.Button(top, text="Limpar lista", style="Quiet.TButton",
                   command=self._batch_clear).pack(side="left", padx=8)
-        ttk.Button(top, text="Voltar", style="Quiet.TButton",
-                  command=self._show_open).pack(side="right")
 
         self.batch_mode_var = tk.StringVar(value="cortar")
         modes = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 4))

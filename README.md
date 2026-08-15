@@ -175,8 +175,8 @@ seguidas não custa nada.
 
 ## Vários arquivos de uma vez (lote)
 
-Dois jeitos de entrar nesse modo: o botão "Vários arquivos de uma vez" no cabeçalho, ou o link
-"Abrir o modo em lote" logo abaixo da zona de arrastar, na tela inicial.
+Duas abas no topo da tela inicial — "Um arquivo" e "Vários arquivos de uma vez" — trocam de modo
+com um clique. É a primeira coisa que aparece ao abrir o programa, não um link escondido.
 
 **Arrastar vários arquivos direto na tela também funciona.** Ao soltar mais de um arquivo na zona
 de arrastar, o programa pergunta se você quer processá-los em lote; se responder que não, usa
@@ -206,4 +206,4 @@ conversão que decepciona quem espera texto editável.
 
 ---
 
-Desenvolvido por **Alex Moreira Productions**.
+Uma faixa discreta no rodapé da janela também credita: Desenvolvido por **Alex Moreira Productions**.

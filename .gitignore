@@ -11,3 +11,4 @@ htmlcov/
 /dist/
 *.spec
 src/slidecut/assets/icon.png
+graphify-out/

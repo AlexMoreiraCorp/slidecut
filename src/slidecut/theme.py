@@ -95,7 +95,6 @@ def apply(root: tk.Misc, fonts: Fonts) -> ttk.Style:
 
     style.configure("Brand.TLabel", background=INK, foreground=SURFACE, font=fonts.brand)
     style.configure("BrandSub.TLabel", background=INK, foreground="#9EB0C6", font=fonts.body)
-    style.configure("BrandFaint.TLabel", background=INK, foreground="#4E698D", font=fonts.tiny)
 
     # Botao comum: branco com borda, sem cor de destaque.
     style.configure(
@@ -123,17 +122,8 @@ def apply(root: tk.Misc, fonts: Fonts) -> ttk.Style:
     )
 
     # Botao do cabecalho (fundo escuro): contorno claro, sem laranja — laranja
-    # e reservado para "cortar aqui", e este botao abre outra tela, nao corta.
-    style.configure(
-        "Header.TButton", background=INK, foreground=SURFACE, bordercolor="#5A7291",
-        lightcolor=INK, darkcolor=INK, focuscolor=SURFACE, relief="flat",
-        padding=(14, 8), font=fonts.body,
-    )
-    style.map(
-        "Header.TButton",
-        background=[("pressed", INK_LINE), ("active", INK_LINE)],
-        bordercolor=[("active", SURFACE)],
-    )
+    # e reservado para "cortar aqui" — a troca de modo agora e uma aba, nao um
+    # botao no cabecalho escuro (que passava despercebido; feedback real de uso).
 
     style.configure(
         "TEntry", fieldbackground=SURFACE, bordercolor=EDGE, lightcolor=EDGE,
