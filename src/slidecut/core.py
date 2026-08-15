@@ -25,6 +25,12 @@ from .errors import NoDividerFound, SlidecutError
 OUTPUT_SUFFIX = " - cortes"
 
 ProgressCallback = Callable[[str], None]
+BatchItemCallback = Callable[[int, int, Path], None]
+"""Chamado no inicio de cada item do lote: (indice base 1, total, arquivo).
+
+Canal separado do texto livre de ProgressCallback de proposito: a barra de
+progresso do lote nao pode depender de recortar um numero de dentro de uma
+mensagem qualquer, que quebraria se o texto dessa mensagem mudasse."""
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,11 @@ def default_outdir(source: Path) -> Path:
 def _notify(on_progress: ProgressCallback | None, message: str) -> None:
     if on_progress is not None:
         on_progress(message)
+
+
+def _notify_item(on_item: BatchItemCallback | None, index: int, total: int, source: Path) -> None:
+    if on_item is not None:
+        on_item(index, total, source)
 
 
 def prepare(
@@ -224,14 +235,21 @@ def process_batch(
     ascii_only: bool = False,
     per_sheet: int = 1,
     on_progress: ProgressCallback | None = None,
+    on_item: BatchItemCallback | None = None,
 ) -> list[BatchItemResult]:
     """Corta varios arquivos de uma vez, cada um na sua propria subpasta.
 
     Um arquivo com problema (sem divisor, corrompido, formato invalido) nao
     interrompe o lote: fica registrado como erro e os demais continuam.
+
+    on_progress traz o texto solto de cada etapa (o mesmo canal que
+    prepare()/cut_at() usam por dentro). on_item e um canal a parte, so para o
+    indice do lote (index, total, source) — nao deriva desse texto, entao a
+    barra de progresso nao depende de nenhum formato de mensagem.
     """
     outdir = Path(outdir).expanduser()
     results: list[BatchItemResult] = []
+    total = len(sources)
 
     for index, raw_source in enumerate(sources, start=1):
         # Tudo dentro do try, inclusive normalizar o caminho e avisar o
@@ -239,7 +257,8 @@ def process_batch(
         # demais, que e a garantia central deste laco.
         try:
             source = Path(raw_source).expanduser()
-            _notify(on_progress, f"[{index}/{len(sources)}] {source.name}")
+            _notify_item(on_item, index, total, source)
+            _notify(on_progress, f"Processando {source.name}...")
             result = process(
                 source,
                 outdir=outdir / source.stem,
@@ -254,7 +273,7 @@ def process_batch(
         except Exception as exc:
             source = Path(str(raw_source))
             with contextlib.suppress(Exception):
-                _notify(on_progress, f"[{index}/{len(sources)}] {source.name}: falhou ({exc})")
+                _notify(on_progress, f"{source.name}: falhou ({exc})")
             results.append(BatchItemResult(source, ok=False, error=str(exc)))
 
     return results
@@ -266,6 +285,7 @@ def convert_batch(
     to: str = "pdf",
     per_sheet: int = 1,
     on_progress: ProgressCallback | None = None,
+    on_item: BatchItemCallback | None = None,
 ) -> list[BatchItemResult]:
     """Converte varios arquivos de uma vez para o mesmo formato de saida.
 
@@ -277,11 +297,13 @@ def convert_batch(
     outdir = Path(outdir).expanduser()
     results: list[BatchItemResult] = []
     used_names: set[str] = set()
+    total = len(sources)
 
     for index, raw_source in enumerate(sources, start=1):
         try:
             source = Path(raw_source).expanduser()
-            _notify(on_progress, f"[{index}/{len(sources)}] {source.name}")
+            _notify_item(on_item, index, total, source)
+            _notify(on_progress, f"Processando {source.name}...")
 
             expected_name = f"{source.stem}.docx" if to == "docx" else f"{source.stem}.pdf"
             if expected_name in used_names:
@@ -298,7 +320,7 @@ def convert_batch(
         except Exception as exc:
             source = Path(str(raw_source))
             with contextlib.suppress(Exception):
-                _notify(on_progress, f"[{index}/{len(sources)}] {source.name}: falhou ({exc})")
+                _notify(on_progress, f"{source.name}: falhou ({exc})")
             results.append(BatchItemResult(source, ok=False, error=str(exc)))
 
     return results

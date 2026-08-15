@@ -252,3 +252,31 @@ def test_process_batch_survives_a_source_path_that_cannot_be_resolved(deck, tmp_
     assert len(resultados) == 2
     assert resultados[0].ok
     assert not resultados[1].ok
+
+
+def test_process_batch_reports_structured_item_progress(deck, tmp_path):
+    """O indice do lote nao pode depender de parsing de texto: canal proprio."""
+    eventos = []
+    core.process_batch(
+        [deck, deck], outdir=tmp_path / "out",
+        on_item=lambda index, total, source: eventos.append((index, total, source.name)),
+    )
+    assert eventos == [(1, 2, deck.name), (2, 2, deck.name)]
+
+
+def test_convert_batch_reports_structured_item_progress(deck, tmp_path):
+    eventos = []
+    core.convert_batch(
+        [deck], outdir=tmp_path / "out", to="pdf",
+        on_item=lambda index, total, source: eventos.append((index, total, source.name)),
+    )
+    assert eventos == [(1, 1, deck.name)]
+
+
+def test_batch_item_progress_fires_even_when_the_item_fails(deck_no_dividers, tmp_path):
+    eventos = []
+    core.process_batch(
+        [deck_no_dividers], outdir=tmp_path / "out",
+        on_item=lambda index, total, source: eventos.append(index),
+    )
+    assert eventos == [1]

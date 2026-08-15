@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slidecut"
-version = "0.7.0"
+version = "0.7.1"
 description = "Converte apresentacoes e documentos para PDF e corta em capitulos nas paginas divisoras coloridas."
 readme = "README.md"
 requires-python = ">=3.10"

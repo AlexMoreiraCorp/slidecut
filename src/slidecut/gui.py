@@ -112,6 +112,11 @@ def conversion_summary(produced: Path, per_sheet: int) -> str:
     return linha + f"\n\nPasta: {produced.parent}"
 
 
+def batch_item_label(index: int, total: int, source: Path) -> str:
+    """Rotulo do item corrente do lote, para a barra de progresso e o status."""
+    return f"Arquivo {index} de {total}: {source.name}"
+
+
 def batch_summary(results: list) -> str:
     """Mensagem final do lote: quantos deram certo, quais falharam e por que."""
     ok = [r for r in results if r.ok]
@@ -589,13 +594,18 @@ class SlidecutApp:
         def progress(msg: str) -> None:
             self._events.put(("batch_status", msg))
 
+        def item(index: int, total: int, source: Path) -> None:
+            # Canal estruturado, separado do texto de `progress`: a barra nao
+            # depende de recortar numero nenhum de dentro de uma mensagem.
+            self._events.put(("batch_item", (index, total, source)))
+
         try:
             if mode == "converter":
                 results = core.convert_batch(files, outdir, to="pdf", per_sheet=per_sheet,
-                                             on_progress=progress)
+                                             on_progress=progress, on_item=item)
             else:
                 results = core.process_batch(files, outdir, per_sheet=per_sheet,
-                                             on_progress=progress)
+                                             on_progress=progress, on_item=item)
             self._events.put(("batch_done", results))
         except Exception as exc:
             self._events.put(("error", str(exc)))
@@ -993,15 +1003,14 @@ class SlidecutApp:
                     self._reflow()
                     self._refresh_summary()
                     self.sheet_status.configure(text="")
+                elif kind == "batch_item":
+                    # Unico responsavel por mover a barra: indice estruturado,
+                    # nunca derivado de texto.
+                    index, total, source = payload
+                    self.batch_progress.configure(maximum=total, value=index - 1)
+                    self.batch_status.configure(text=batch_item_label(index, total, source))
                 elif kind == "batch_status":
-                    text = str(payload)
-                    self.batch_status.configure(text=text)
-                    if text.startswith("["):
-                        try:
-                            done = int(text[1:].split("/", 1)[0])
-                            self.batch_progress.configure(value=done - 1)
-                        except ValueError:
-                            pass
+                    self.batch_status.configure(text=str(payload))
                 elif kind == "batch_done":
                     self._set_busy(False)
                     self.batch_progress.pack_forget()

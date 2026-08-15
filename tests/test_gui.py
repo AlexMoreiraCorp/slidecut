@@ -139,3 +139,8 @@ def test_batch_summary_all_ok_has_no_failure_list():
     resultados = [core.BatchItemResult(source=Path("a.pdf"), ok=True, written=[Path("a1.pdf")])]
     texto = gui.batch_summary(resultados)
     assert "falh" not in texto.lower()
+
+
+def test_batch_item_label_shows_position_and_name(tmp_path):
+    texto = gui.batch_item_label(2, 5, tmp_path / "Aula 03.pptx")
+    assert texto == "Arquivo 2 de 5: Aula 03.pptx"
