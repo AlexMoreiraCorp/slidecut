@@ -454,31 +454,6 @@ class SlidecutApp:
             style="SurfaceFaint.TLabel", wraplength=440, justify="left",
         ).pack(anchor="w", pady=(4, 0))
 
-        tk.Frame(inner, background=theme.EDGE_SOFT, height=1).pack(fill="x", pady=(18, 12))
-        status = ttk.Frame(inner, style="Surface.TFrame")
-        status.pack(fill="x")
-        has_converter, text, warning = convert.converter_status()
-        dot = tk.Canvas(status, width=10, height=14, background=theme.SURFACE,
-                        highlightthickness=0)
-        dot.pack(side="left", pady=(2, 0))
-        if not has_converter:
-            colour = theme.RED
-        else:
-            colour = theme.CUT if warning else theme.GREEN
-        dot.create_oval(1, 5, 9, 13, fill=colour, outline="")
-
-        column = ttk.Frame(status, style="Surface.TFrame")
-        column.pack(side="left", padx=(8, 0))
-        ttk.Label(column, text=text, style="SurfaceMuted.TLabel").pack(anchor="w")
-        if warning:
-            detail = warning
-        elif has_converter:
-            detail = "Nada mais precisa ser instalado neste computador."
-        else:
-            detail = "Arquivos que já são PDF continuam funcionando."
-        ttk.Label(column, text=detail, style="SurfaceFaint.TLabel",
-                  wraplength=440, justify="left").pack(anchor="w")
-
         self.open_progress = ttk.Progressbar(
             self.open_screen, mode="indeterminate", style="Cut.Horizontal.TProgressbar")
 
@@ -656,19 +631,22 @@ class SlidecutApp:
         listwrap.pack(fill="both", expand=True, padx=24, pady=12)
         self.batch_listbox = tk.Listbox(
             listwrap, background=theme.SURFACE, foreground=theme.INK,
-            selectbackground=theme.CUT_SOFT, selectforeground=theme.INK,
+            selectbackground=theme.INK_LINE, selectforeground=theme.SURFACE,
             borderwidth=0, highlightthickness=0, font=self.fonts.body, activestyle="none",
             selectmode="extended",
         )
         self.batch_listbox.pack(fill="both", expand=True, padx=1, pady=1)
         self.batch_listbox.bind("<Delete>", lambda _e: self._batch_remove_selected())
+        self.batch_listbox.bind("<<ListboxSelect>>", lambda _e: self._batch_update_status())
 
         footer = tk.Frame(self.batch_screen, background=theme.SURFACE, height=64)
         footer.pack(side="bottom", fill="x")
         footer.pack_propagate(False)
         tk.Frame(footer, background=theme.EDGE, height=1).pack(fill="x")
+        ttk.Button(footer, text="Voltar", style="Quiet.TButton",
+                  command=self._show_open).pack(side="left", padx=24, pady=12)
         self.batch_status = ttk.Label(footer, text="", style="SurfaceMuted.TLabel")
-        self.batch_status.pack(side="left", padx=24)
+        self.batch_status.pack(side="left", padx=(0, 24))
         self.batch_run_button = ttk.Button(
             footer, text="PROCESSAR TODOS", style="Cut.TButton", command=self._on_batch_run)
         self.batch_run_button.pack(side="right", padx=24, pady=12)
@@ -709,7 +687,17 @@ class SlidecutApp:
         for index in sorted(selected, reverse=True):
             self.batch_listbox.delete(index)
             del self._batch_files[index]
-        self.batch_status.configure(text=f"{len(self._batch_files)} arquivo(s) na lista")
+        self._batch_update_status()
+
+    def _batch_update_status(self) -> None:
+        """Mostra quantos arquivos estao selecionados, alem do total na lista."""
+        total = len(self._batch_files)
+        selected = len(self.batch_listbox.curselection())
+        if selected:
+            self.batch_status.configure(
+                text=f"{selected} de {total} arquivo(s) selecionado(s)")
+        else:
+            self.batch_status.configure(text=f"{total} arquivo(s) na lista")
 
     def _on_batch_run(self) -> None:
         if self.busy or not self._batch_files:

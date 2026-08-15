@@ -92,3 +92,33 @@ def test_grouping_in_place_leaves_no_temporary_behind(deck):
     layout.group_pages(deck, deck, per_sheet=2)
     restos = list(deck.parent.glob("*.tmp")) + list(deck.parent.glob("*~"))
     assert restos == []
+
+
+def test_grouping_in_place_retries_a_transient_windows_lock(deck, monkeypatch):
+    """WinError 5 passageiro (antivirus/indexador travando o arquivo recem-gravado)
+    nao pode derrubar o agrupamento: poucas tentativas resolvem sozinhas."""
+    tentativas = {"n": 0}
+    original_replace = layout.os.replace
+
+    def falha_duas_vezes(origem, destino):
+        tentativas["n"] += 1
+        if tentativas["n"] <= 2:
+            raise PermissionError("[WinError 5] Acesso negado")
+        return original_replace(origem, destino)
+
+    monkeypatch.setattr(layout.os, "replace", falha_duas_vezes)
+    monkeypatch.setattr(layout.time, "sleep", lambda _s: None)
+
+    layout.group_pages(deck, deck, per_sheet=2)
+    assert tentativas["n"] == 3
+
+
+def test_grouping_in_place_gives_up_after_repeated_lock_failures(deck, monkeypatch):
+    def sempre_falha(origem, destino):
+        raise PermissionError("[WinError 5] Acesso negado")
+
+    monkeypatch.setattr(layout.os, "replace", sempre_falha)
+    monkeypatch.setattr(layout.time, "sleep", lambda _s: None)
+
+    with pytest.raises(PermissionError):
+        layout.group_pages(deck, deck, per_sheet=2)

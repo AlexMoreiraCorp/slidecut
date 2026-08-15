@@ -2,13 +2,14 @@
 ;
 ; Instala o programa, cria os atalhos e resolve a dependencia de conversao.
 ;
-; Converter apresentacoes e documentos em PDF usa o Microsoft Office quando ele
-; existe, porque a renderizacao sai do proprio aplicativo que criou o arquivo.
+; Converter apresentacoes e documentos em PDF usa o LibreOffice quando ele
+; existe: mesma versao em qualquer maquina, previsivel. O Microsoft Office
+; entra como reserva, para quem nao tem LibreOffice ou quando este falhar
+; num arquivo especifico.
 ;
-; Mesmo assim o LibreOffice e oferecido a todo mundo que ainda nao o tem: ha
-; arquivos que o PowerPoint abre e desenha, mas se recusa a exportar, e nesses
-; casos o LibreOffice e o unico que da conta. Ter os dois instalados e o que
-; garante que qualquer material do time seja cortavel.
+; Mesmo assim o LibreOffice e oferecido a todo mundo que ainda nao o tem: ter
+; os dois instalados e o que garante que qualquer material do time seja
+; cortavel, mesmo os poucos casos em que um dos dois recusa um arquivo.
 ;
 ; Ele nao pode ser embutido aqui (instalador proprio, ~350 MB, licenca MPL),
 ; entao o setup baixa o instalador oficial e confere o SHA-256 publicado pela
@@ -17,7 +18,7 @@
 ; Compilar: ISCC.exe installer\slidecut.iss
 
 #define AppName        "slidecut"
-#define AppVersion     "0.9.0"
+#define AppVersion     "0.9.1"
 #define AppPublisher   "Alex Moreira Productions"
 #define AppExe         "slidecut.exe"
 
@@ -88,9 +89,8 @@ begin
 end;
 
 function MicrosoftOfficeInstalled(): Boolean;
-{ O programa prefere o Office quando ele existe: converte pelo proprio
-  aplicativo que criou o arquivo, com fidelidade exata. Nao dispensa o
-  LibreOffice, que cobre os arquivos que o Office se recusa a exportar. }
+{ O programa prefere o LibreOffice quando ele existe. O Office entra como
+  reserva: cobre os poucos arquivos que o LibreOffice se recusa a exportar. }
 begin
   Result :=
     RegKeyExists(HKEY_CLASSES_ROOT, 'PowerPoint.Application') or

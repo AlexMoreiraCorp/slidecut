@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import os
+import time
 from pathlib import Path
 
 import pymupdf
@@ -25,6 +26,24 @@ MARGIN = 28.0
 
 GUTTER = 14.0
 """Espaco entre as paginas empilhadas, para nao encostarem uma na outra."""
+
+REPLACE_RETRIES = 5
+REPLACE_BACKOFF = 0.15
+"""Um antivirus ou indexador pode segurar por uns instantes um arquivo que
+acabou de ser escrito, e o os.replace falha com WinError 5 (Acesso negado) —
+nao porque o agrupamento deu errado, mas porque o Windows ainda nao soltou o
+arquivo. Repetir com um pequeno atraso quase sempre resolve sozinho."""
+
+
+def _replace_with_retry(source: Path, target: Path) -> None:
+    for attempt in range(1, REPLACE_RETRIES + 1):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == REPLACE_RETRIES:
+                raise
+            time.sleep(REPLACE_BACKOFF * attempt)
 
 
 def describe(per_sheet: int) -> str:
@@ -100,7 +119,7 @@ def group_pages(source: str | Path, target: str | Path, per_sheet: int = 2) -> P
                     sheets.close()
 
         if in_place:
-            os.replace(written_to, target)
+            _replace_with_retry(written_to, target)
     finally:
         if in_place and written_to.exists():
             written_to.unlink(missing_ok=True)
