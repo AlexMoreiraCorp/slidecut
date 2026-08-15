@@ -248,19 +248,36 @@ def test_the_fallback_message_stays_readable_instead_of_dumping_the_com_error(
 
 def test_converter_status_names_office_when_present(monkeypatch):
     monkeypatch.setattr(convert.office, "is_available", lambda suffix: True)
-    ok, texto = convert.converter_status(".pptx")
+    ok, texto, _ = convert.converter_status(".pptx")
     assert ok and "Microsoft Office" in texto
 
 
 def test_converter_status_names_libreoffice_as_the_fallback(monkeypatch):
     monkeypatch.setattr(convert.office, "is_available", lambda suffix: False)
     monkeypatch.setattr(convert, "find_soffice", lambda: Path("soffice"))
-    ok, texto = convert.converter_status(".pptx")
+    ok, texto, _ = convert.converter_status(".pptx")
     assert ok and "LibreOffice" in texto
 
 
 def test_converter_status_warns_when_nothing_can_convert(monkeypatch):
     monkeypatch.setattr(convert.office, "is_available", lambda suffix: False)
     monkeypatch.setattr(convert, "find_soffice", lambda: None)
-    ok, texto = convert.converter_status(".pptx")
+    ok, texto, _ = convert.converter_status(".pptx")
     assert not ok and "PDF" in texto
+
+
+def test_status_warns_when_office_has_no_libreoffice_backup(monkeypatch):
+    """Ha arquivos que so o LibreOffice converte; sem ele nao existe segunda chance."""
+    monkeypatch.setattr(convert.office, "is_available", lambda suffix: True)
+    monkeypatch.setattr(convert, "find_soffice", lambda: None)
+    ok, texto, aviso = convert.converter_status(".pptx")
+    assert ok
+    assert "Microsoft Office" in texto
+    assert aviso is not None and "LibreOffice" in aviso
+
+
+def test_status_has_no_warning_when_both_converters_exist(monkeypatch):
+    monkeypatch.setattr(convert.office, "is_available", lambda suffix: True)
+    monkeypatch.setattr(convert, "find_soffice", lambda: Path("soffice"))
+    ok, _texto, aviso = convert.converter_status(".pptx")
+    assert ok and aviso is None

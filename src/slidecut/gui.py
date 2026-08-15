@@ -262,21 +262,27 @@ class SlidecutApp:
         tk.Frame(inner, background=theme.EDGE_SOFT, height=1).pack(fill="x", pady=(18, 12))
         status = ttk.Frame(inner, style="Surface.TFrame")
         status.pack(fill="x")
-        has_converter, text = convert.converter_status()
+        has_converter, text, warning = convert.converter_status()
         dot = tk.Canvas(status, width=10, height=14, background=theme.SURFACE,
                         highlightthickness=0)
         dot.pack(side="left", pady=(2, 0))
-        dot.create_oval(1, 5, 9, 13, fill=theme.GREEN if has_converter else theme.RED,
-                        outline="")
+        if not has_converter:
+            colour = theme.RED
+        else:
+            colour = theme.CUT if warning else theme.GREEN
+        dot.create_oval(1, 5, 9, 13, fill=colour, outline="")
+
         column = ttk.Frame(status, style="Surface.TFrame")
         column.pack(side="left", padx=(8, 0))
         ttk.Label(column, text=text, style="SurfaceMuted.TLabel").pack(anchor="w")
-        ttk.Label(
-            column,
-            text=("Nada mais precisa ser instalado neste computador."
-                  if has_converter else "Arquivos que já são PDF continuam funcionando."),
-            style="SurfaceFaint.TLabel",
-        ).pack(anchor="w")
+        if warning:
+            detail = warning
+        elif has_converter:
+            detail = "Nada mais precisa ser instalado neste computador."
+        else:
+            detail = "Arquivos que já são PDF continuam funcionando."
+        ttk.Label(column, text=detail, style="SurfaceFaint.TLabel",
+                  wraplength=440, justify="left").pack(anchor="w")
 
         self.open_progress = ttk.Progressbar(
             self.open_screen, mode="indeterminate", style="Cut.Horizontal.TProgressbar")

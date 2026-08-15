@@ -17,13 +17,17 @@ Cortar um PDF não exige nada além do programa. Converter apresentações e doc
 conversor, e o slidecut usa o que a máquina já tiver:
 
 1. **Microsoft Office**, se instalado. É o caminho preferido: quem renderiza é o próprio
-   PowerPoint/Word/Excel, então o PDF sai idêntico ao que o autor via. Não instala nada e é mais
-   rápido (~2s contra ~5s do LibreOffice num arquivo pequeno).
-2. **LibreOffice**, como reserva — quando não há Office, ou quando o Office falha.
+   PowerPoint/Word/Excel, então o PDF sai idêntico ao que o autor via, e é mais rápido
+   (~2s contra ~5s do LibreOffice num arquivo pequeno).
+2. **LibreOffice**, quando não há Office — e também quando o Office falha.
 
-O instalador só oferece baixar o LibreOffice (~350 MB) se a máquina **não tiver nenhum dos dois**,
-conferindo o SHA-256 publicado pela The Document Foundation antes de executar. Numa máquina com
-Office, a instalação não baixa nada.
+**Os dois se completam, e vale ter ambos.** Existem arquivos que o PowerPoint abre e desenha na
+tela, mas se recusa a exportar: falham tanto `SaveAs` para PDF quanto `SaveCopyAs` para `.pptx`.
+Nesses casos o LibreOffice é o único que dá conta. Por isso o instalador oferece baixá-lo
+(~350 MB, marcado por padrão) para quem ainda não o tem, mesmo em máquinas com Office —
+conferindo o SHA-256 publicado pela The Document Foundation antes de executar.
+
+Quem já tem LibreOffice não vê essa opção, e ela pode ser desmarcada por quem não quiser.
 
 O programa nunca fecha um Office que já estava aberto: se você estiver com o PowerPoint em uso, ele
 se conecta à sua sessão para exportar e a deixa exatamente como estava.

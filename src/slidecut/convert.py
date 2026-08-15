@@ -68,14 +68,25 @@ def available_converter(suffix: str) -> str | None:
     return None
 
 
-def converter_status(suffix: str = ".pptx") -> tuple[bool, str]:
-    """(tem conversor, frase pronta) para mostrar na tela de abertura."""
+def converter_status(suffix: str = ".pptx") -> tuple[bool, str, str | None]:
+    """(tem conversor, frase pronta, aviso) para a tela de abertura.
+
+    O aviso existe porque os dois conversores se completam: ha arquivos que o
+    PowerPoint abre e desenha mas se recusa a exportar, e so o LibreOffice da
+    conta deles. Ter apenas um dos dois deixa um ponto cego.
+    """
     name = available_converter(suffix)
     if name == "Microsoft Office":
-        return True, "Apresentações serão convertidas pelo Microsoft Office"
+        warning = None
+        if find_soffice() is None:
+            warning = (
+                "Sem o LibreOffice instalado, arquivos que o Office recusar não "
+                "terão segunda chance."
+            )
+        return True, "Apresentações serão convertidas pelo Microsoft Office", warning
     if name == "LibreOffice":
-        return True, "Apresentações serão convertidas pelo LibreOffice"
-    return False, "Nenhum conversor encontrado — só é possível cortar PDFs"
+        return True, "Apresentações serão convertidas pelo LibreOffice", None
+    return False, "Nenhum conversor encontrado — só é possível cortar PDFs", None
 
 
 def to_pdf(
