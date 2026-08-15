@@ -11,6 +11,7 @@ Manter isto fora das interfaces garante que os dois modos cortem igual.
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -18,7 +19,8 @@ from pathlib import Path
 from typing import Callable
 
 from . import analyze, convert, docx, layout, split, titles
-from .errors import NoDividerFound
+from . import document as document_module
+from .errors import NoDividerFound, SlidecutError
 
 OUTPUT_SUFFIX = " - cortes"
 
@@ -179,6 +181,13 @@ def convert_document(
         _notify(on_progress, f"Preparando {source.name}...")
         pdf_path = convert.to_pdf(source, workdir, on_progress=on_progress)
 
+        # PDF de entrada passa direto por convert.to_pdf, sem abrir o arquivo.
+        # Um PDF corrompido so seria pego na hora de escrever a saida (ou nunca,
+        # no caminho to="pdf" com per_sheet=1, que so copia bytes). Confere aqui
+        # para o erro aparecer sempre no mesmo lugar, nao depender do caminho.
+        with document_module.open_pdf(pdf_path):
+            pass
+
         if per_sheet != 1:
             _notify(on_progress, f"Agrupando em {layout.describe(per_sheet)}...")
             agrupado = Path(workdir) / "agrupado.pdf"
@@ -195,6 +204,106 @@ def convert_document(
     return alvo
 
 
+@dataclass(frozen=True)
+class BatchItemResult:
+    """Resultado de um arquivo dentro de um lote: sucesso ou erro, nunca os dois."""
+
+    source: Path
+    ok: bool
+    output: Path | None = None
+    written: list[Path] = field(default_factory=list)
+    error: str | None = None
+
+
+def process_batch(
+    sources: list[str | Path],
+    outdir: str | Path,
+    color: tuple[int, int, int] | None = None,
+    tolerance: float = analyze.DEFAULT_TOLERANCE,
+    min_coverage: float = analyze.MIN_COVERAGE,
+    ascii_only: bool = False,
+    per_sheet: int = 1,
+    on_progress: ProgressCallback | None = None,
+) -> list[BatchItemResult]:
+    """Corta varios arquivos de uma vez, cada um na sua propria subpasta.
+
+    Um arquivo com problema (sem divisor, corrompido, formato invalido) nao
+    interrompe o lote: fica registrado como erro e os demais continuam.
+    """
+    outdir = Path(outdir).expanduser()
+    results: list[BatchItemResult] = []
+
+    for index, raw_source in enumerate(sources, start=1):
+        # Tudo dentro do try, inclusive normalizar o caminho e avisar o
+        # progresso: um item com um caminho invalido nao pode derrubar os
+        # demais, que e a garantia central deste laco.
+        try:
+            source = Path(raw_source).expanduser()
+            _notify(on_progress, f"[{index}/{len(sources)}] {source.name}")
+            result = process(
+                source,
+                outdir=outdir / source.stem,
+                color=color,
+                tolerance=tolerance,
+                min_coverage=min_coverage,
+                ascii_only=ascii_only,
+                per_sheet=per_sheet,
+                on_progress=on_progress,
+            )
+            results.append(BatchItemResult(source, ok=True, written=result.written))
+        except Exception as exc:
+            source = Path(str(raw_source))
+            with contextlib.suppress(Exception):
+                _notify(on_progress, f"[{index}/{len(sources)}] {source.name}: falhou ({exc})")
+            results.append(BatchItemResult(source, ok=False, error=str(exc)))
+
+    return results
+
+
+def convert_batch(
+    sources: list[str | Path],
+    outdir: str | Path,
+    to: str = "pdf",
+    per_sheet: int = 1,
+    on_progress: ProgressCallback | None = None,
+) -> list[BatchItemResult]:
+    """Converte varios arquivos de uma vez para o mesmo formato de saida.
+
+    Todos vao para a mesma pasta, sem subpasta por arquivo. Duas entradas com o
+    mesmo nome (pastas diferentes, ou so a extensao diferente) gerariam o mesmo
+    arquivo de saida; a segunda e recusada em vez de sobrescrever a primeira em
+    silencio.
+    """
+    outdir = Path(outdir).expanduser()
+    results: list[BatchItemResult] = []
+    used_names: set[str] = set()
+
+    for index, raw_source in enumerate(sources, start=1):
+        try:
+            source = Path(raw_source).expanduser()
+            _notify(on_progress, f"[{index}/{len(sources)}] {source.name}")
+
+            expected_name = f"{source.stem}.docx" if to == "docx" else f"{source.stem}.pdf"
+            if expected_name in used_names:
+                raise SlidecutError(
+                    f"{expected_name} ja foi gerado por outro arquivo do lote; "
+                    "renomeie um dos dois para evitar que um sobrescreva o outro."
+                )
+
+            produced = convert_document(
+                source, outdir, to=to, per_sheet=per_sheet, on_progress=on_progress
+            )
+            used_names.add(expected_name)
+            results.append(BatchItemResult(source, ok=True, output=produced))
+        except Exception as exc:
+            source = Path(str(raw_source))
+            with contextlib.suppress(Exception):
+                _notify(on_progress, f"[{index}/{len(sources)}] {source.name}: falhou ({exc})")
+            results.append(BatchItemResult(source, ok=False, error=str(exc)))
+
+    return results
+
+
 def process(
     source: str | Path,
     outdir: str | Path | None = None,
@@ -203,6 +312,7 @@ def process(
     min_coverage: float = analyze.MIN_COVERAGE,
     ascii_only: bool = False,
     list_only: bool = False,
+    per_sheet: int = 1,
     on_progress: ProgressCallback | None = None,
 ) -> ProcessResult:
     """Corte automatico ponta a ponta: converte, detecta a cor e grava.
@@ -232,5 +342,6 @@ def process(
             outdir=resolved_outdir,
             ascii_only=ascii_only,
             list_only=list_only,
+            per_sheet=per_sheet,
             on_progress=on_progress,
         )

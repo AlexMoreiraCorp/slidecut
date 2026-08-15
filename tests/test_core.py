@@ -169,3 +169,86 @@ def test_convert_document_produces_a_docx(deck, tmp_path):
 def test_convert_document_rejects_an_unknown_target(deck, tmp_path):
     with pytest.raises(ValueError):
         core.convert_document(deck, tmp_path / "out", to="pptx")
+
+
+def test_process_batch_cuts_every_file(deck, deck_no_dividers, tmp_path):
+    entradas = [deck, deck]  # dois arquivos com o mesmo padrao de cor
+    resultados = core.process_batch(entradas, outdir=tmp_path / "out")
+    assert len(resultados) == 2
+    assert all(r.ok for r in resultados)
+    assert len(list((tmp_path / "out" / deck.stem).glob("*.pdf"))) == 4
+
+
+def test_process_batch_keeps_going_after_one_file_fails(deck, deck_no_dividers, tmp_path):
+    entradas = [deck, deck_no_dividers]
+    resultados = core.process_batch(entradas, outdir=tmp_path / "out")
+    assert resultados[0].ok
+    assert not resultados[1].ok
+    assert resultados[1].error is not None
+
+
+def test_process_batch_reports_progress_per_file(deck, tmp_path):
+    mensagens = []
+    core.process_batch([deck, deck], outdir=tmp_path / "out",
+                       on_progress=lambda msg: mensagens.append(msg))
+    assert any(deck.name in m for m in mensagens)
+
+
+def test_process_batch_separates_each_file_into_its_own_subfolder(deck, tmp_path):
+    core.process_batch([deck], outdir=tmp_path / "out")
+    assert (tmp_path / "out" / deck.stem).is_dir()
+
+
+def test_convert_batch_converts_every_file_to_pdf(deck, tmp_path):
+    from tests.conftest import ORANGE, WHITE, build_pdf
+
+    outro = build_pdf(tmp_path / "outro.pdf", [(ORANGE, "Tema"), (WHITE, "x")])
+    resultados = core.convert_batch([deck, outro], outdir=tmp_path / "out", to="pdf")
+    assert len(resultados) == 2
+    assert all(r.ok for r in resultados)
+    assert (tmp_path / "out" / f"{deck.stem}.pdf").is_file()
+    assert (tmp_path / "out" / "outro.pdf").is_file()
+
+
+def test_convert_batch_keeps_going_after_one_file_fails(deck, tmp_path):
+    ruim = tmp_path / "quebrado.pdf"
+    ruim.write_bytes(b"nao sou pdf")
+    resultados = core.convert_batch([deck, ruim], outdir=tmp_path / "out", to="pdf")
+    assert resultados[0].ok
+    assert not resultados[1].ok
+
+
+def test_convert_batch_applies_the_same_layout_to_all(deck, tmp_path):
+    import pymupdf
+
+    resultados = core.convert_batch([deck], outdir=tmp_path / "out", to="pdf", per_sheet=4)
+    with pymupdf.open(str(resultados[0].output)) as d:
+        assert d.page_count == 2
+
+
+def test_convert_batch_detects_name_collisions_instead_of_overwriting(tmp_path):
+    """Duas entradas de nomes iguais em pastas diferentes nao podem se apagar."""
+    from tests.conftest import ORANGE, WHITE, build_pdf
+
+    pasta_a = tmp_path / "turma_a"
+    pasta_b = tmp_path / "turma_b"
+    pasta_a.mkdir()
+    pasta_b.mkdir()
+    um = build_pdf(pasta_a / "aula.pdf", [(ORANGE, "Um"), (WHITE, "x")])
+    dois = build_pdf(pasta_b / "aula.pdf", [(ORANGE, "Dois"), (WHITE, "y")])
+
+    resultados = core.convert_batch([um, dois], outdir=tmp_path / "out", to="pdf")
+
+    assert resultados[0].ok
+    assert not resultados[1].ok
+    assert "aula.pdf" in resultados[1].error
+    assert (tmp_path / "out" / "aula.pdf").is_file()
+
+
+def test_process_batch_survives_a_source_path_that_cannot_be_resolved(deck, tmp_path):
+    """Um item ruim na lista nao pode derrubar o laco inteiro."""
+    entradas = [deck, "\x00caminho-invalido"]
+    resultados = core.process_batch(entradas, outdir=tmp_path / "out")
+    assert len(resultados) == 2
+    assert resultados[0].ok
+    assert not resultados[1].ok

@@ -112,6 +112,17 @@ def conversion_summary(produced: Path, per_sheet: int) -> str:
     return linha + f"\n\nPasta: {produced.parent}"
 
 
+def batch_summary(results: list) -> str:
+    """Mensagem final do lote: quantos deram certo, quais falharam e por que."""
+    ok = [r for r in results if r.ok]
+    ruins = [r for r in results if not r.ok]
+    linha = f"{len(ok)} de {len(results)} arquivo(s) processados com sucesso."
+    if ruins:
+        detalhes = "\n".join(f"  • {r.source.name}: {r.error}" for r in ruins)
+        linha += f"\n\nFalharam ({len(ruins)}):\n{detalhes}"
+    return linha
+
+
 def selection_summary(selected: int, total: int) -> str:
     if selected == 0:
         return f"{total} páginas · nenhum corte marcado"
@@ -195,6 +206,7 @@ class SlidecutApp:
         self._build_header()
         self._build_open_screen()
         self._build_sheet_screen()
+        self._build_batch_screen()
         self._show_open()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -217,6 +229,14 @@ class SlidecutApp:
         ttk.Label(bar, text="SLIDECUT", style="Brand.TLabel").pack(side="left")
         self.header_file = ttk.Label(bar, text="", style="BrandSub.TLabel")
         self.header_file.pack(side="left", padx=16)
+
+        self.batch_button = tk.Button(
+            bar, text="Processar vários arquivos", command=self._show_batch,
+            background=theme.INK, foreground="#C7D4E3", activebackground=theme.INK,
+            activeforeground=theme.SURFACE, relief="flat", borderwidth=0,
+            font=self.fonts.small, cursor="hand2", padx=10,
+        )
+        self.batch_button.pack(side="right", padx=18)
 
     # -------------------------------------------------------- tela: abrir
     def _build_open_screen(self) -> None:
@@ -451,15 +471,154 @@ class SlidecutApp:
         self.sheet_progress = ttk.Progressbar(
             footer, mode="indeterminate", style="Cut.Horizontal.TProgressbar", length=160)
 
+    # -------------------------------------------------------- tela: lote
+    def _build_batch_screen(self) -> None:
+        self.batch_screen = ttk.Frame(self.root, style="Paper.TFrame")
+
+        header = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 18, 24, 8))
+        header.pack(fill="x")
+        ttk.Label(header, text="Vários arquivos de uma vez", style="PaperTitle.TLabel"
+                 ).pack(anchor="w")
+        ttk.Label(
+            header,
+            text="Cada arquivo é processado sozinho: um problema num deles não para o resto.",
+            style="PaperFaint.TLabel",
+        ).pack(anchor="w", pady=(2, 0))
+
+        top = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 8))
+        top.pack(fill="x")
+        ttk.Button(top, text="Adicionar arquivos...", style="Quiet.TButton",
+                  command=self._batch_add_files).pack(side="left")
+        ttk.Button(top, text="Limpar lista", style="Quiet.TButton",
+                  command=self._batch_clear).pack(side="left", padx=8)
+        ttk.Button(top, text="Voltar", style="Quiet.TButton",
+                  command=self._show_open).pack(side="right")
+
+        self.batch_mode_var = tk.StringVar(value="cortar")
+        modes = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 4))
+        modes.pack(fill="x")
+        ttk.Radiobutton(modes, text="Cortar cada arquivo em capítulos",
+                        value="cortar", variable=self.batch_mode_var,
+                        command=self._on_batch_mode_changed).pack(side="left")
+        ttk.Radiobutton(modes, text="Só converter para PDF",
+                        value="converter", variable=self.batch_mode_var,
+                        command=self._on_batch_mode_changed).pack(side="left", padx=16)
+
+        self.batch_layout_row = ttk.Frame(self.batch_screen, style="Paper.TFrame",
+                                          padding=(24, 4))
+        ttk.Label(self.batch_layout_row, text="Páginas por folha:",
+                 style="PaperMuted.TLabel").pack(side="left", padx=(0, 8))
+        self.batch_layout_combo = ttk.Combobox(
+            self.batch_layout_row, state="readonly", width=30,
+            values=[rotulo for rotulo, _ in LAYOUT_CHOICES],
+        )
+        self.batch_layout_combo.current(
+            [valor for _, valor in LAYOUT_CHOICES].index(DEFAULT_PER_SHEET))
+        self.batch_layout_combo.pack(side="left")
+
+        listwrap = tk.Frame(self.batch_screen, background=theme.SURFACE,
+                            highlightthickness=1, highlightbackground=theme.EDGE)
+        listwrap.pack(fill="both", expand=True, padx=24, pady=12)
+        self.batch_listbox = tk.Listbox(
+            listwrap, background=theme.SURFACE, foreground=theme.INK,
+            selectbackground=theme.CUT_SOFT, selectforeground=theme.INK,
+            borderwidth=0, highlightthickness=0, font=self.fonts.body, activestyle="none",
+        )
+        self.batch_listbox.pack(fill="both", expand=True, padx=1, pady=1)
+
+        footer = tk.Frame(self.batch_screen, background=theme.SURFACE, height=64)
+        footer.pack(side="bottom", fill="x")
+        footer.pack_propagate(False)
+        tk.Frame(footer, background=theme.EDGE, height=1).pack(fill="x")
+        self.batch_status = ttk.Label(footer, text="", style="SurfaceMuted.TLabel")
+        self.batch_status.pack(side="left", padx=24)
+        self.batch_run_button = ttk.Button(
+            footer, text="PROCESSAR TODOS", style="Cut.TButton", command=self._on_batch_run)
+        self.batch_run_button.pack(side="right", padx=24, pady=12)
+        self.batch_progress = ttk.Progressbar(
+            footer, mode="determinate", style="Cut.Horizontal.TProgressbar", length=200)
+
+        self._batch_files: list[Path] = []
+        self._on_batch_mode_changed()
+
+    def _on_batch_mode_changed(self) -> None:
+        if self.batch_mode_var.get() == "converter":
+            self.batch_layout_row.pack(fill="x")
+        else:
+            self.batch_layout_row.pack_forget()
+
+    def _batch_add_files(self) -> None:
+        if self.busy:
+            return
+        chosen = filedialog.askopenfilenames(title="Selecione os arquivos",
+                                             filetypes=PRIMARY_TYPES)
+        for path in chosen:
+            candidate = Path(path)
+            if candidate not in self._batch_files:
+                self._batch_files.append(candidate)
+                self.batch_listbox.insert("end", candidate.name)
+        self.batch_status.configure(text=f"{len(self._batch_files)} arquivo(s) na lista")
+
+    def _batch_clear(self) -> None:
+        self._batch_files.clear()
+        self.batch_listbox.delete(0, "end")
+        self.batch_status.configure(text="")
+
+    def _on_batch_run(self) -> None:
+        if self.busy or not self._batch_files:
+            if not self._batch_files:
+                messagebox.showwarning(WINDOW_TITLE, "Adicione ao menos um arquivo.")
+            return
+
+        outdir = filedialog.askdirectory(title="Pasta de saída para o lote")
+        if not outdir:
+            return
+
+        mode = self.batch_mode_var.get()
+        per_sheet = LAYOUT_CHOICES[self.batch_layout_combo.current()][1]
+        files = list(self._batch_files)
+
+        self._set_busy(True)
+        self.batch_progress.configure(maximum=len(files), value=0)
+        self.batch_progress.pack(side="right", padx=16)
+        threading.Thread(
+            target=self._run_batch, args=(files, outdir, mode, per_sheet), daemon=True
+        ).start()
+
+    def _run_batch(self, files: list[Path], outdir: str, mode: str, per_sheet: int) -> None:
+        def progress(msg: str) -> None:
+            self._events.put(("batch_status", msg))
+
+        try:
+            if mode == "converter":
+                results = core.convert_batch(files, outdir, to="pdf", per_sheet=per_sheet,
+                                             on_progress=progress)
+            else:
+                results = core.process_batch(files, outdir, per_sheet=per_sheet,
+                                             on_progress=progress)
+            self._events.put(("batch_done", results))
+        except Exception as exc:
+            self._events.put(("error", str(exc)))
+
+    def _hide_all_screens(self) -> None:
+        for screen in (self.open_screen, self.sheet_screen, self.batch_screen):
+            screen.pack_forget()
+
     def _show_open(self) -> None:
         if self.busy:
             return
-        self.sheet_screen.pack_forget()
+        self._hide_all_screens()
         self.open_screen.pack(fill="both", expand=True)
 
     def _show_sheet(self) -> None:
-        self.open_screen.pack_forget()
+        self._hide_all_screens()
         self.sheet_screen.pack(fill="both", expand=True)
+
+    def _show_batch(self) -> None:
+        if self.busy:
+            return
+        self._hide_all_screens()
+        self.batch_screen.pack(fill="both", expand=True)
 
     def _on_mousewheel(self, event: tk.Event) -> None:
         if self.sheet_screen.winfo_ismapped():
@@ -804,7 +963,7 @@ class SlidecutApp:
         for widget in (
             self.analyse_button, self.cut_button, self.back_button,
             self.pick_input_button, self.pick_outdir_button,
-            self.suggest_button, self.clear_button,
+            self.suggest_button, self.clear_button, self.batch_run_button,
         ):
             widget.configure(state=state)
 
@@ -834,6 +993,21 @@ class SlidecutApp:
                     self._reflow()
                     self._refresh_summary()
                     self.sheet_status.configure(text="")
+                elif kind == "batch_status":
+                    text = str(payload)
+                    self.batch_status.configure(text=text)
+                    if text.startswith("["):
+                        try:
+                            done = int(text[1:].split("/", 1)[0])
+                            self.batch_progress.configure(value=done - 1)
+                        except ValueError:
+                            pass
+                elif kind == "batch_done":
+                    self._set_busy(False)
+                    self.batch_progress.pack_forget()
+                    self.batch_progress.configure(value=len(payload))
+                    self.batch_status.configure(text=batch_summary(payload))
+                    messagebox.showinfo(WINDOW_TITLE, batch_summary(payload))
                 elif kind == "converted":
                     produced, per_sheet = payload
                     self._set_busy(False)

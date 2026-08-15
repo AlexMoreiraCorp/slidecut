@@ -172,3 +172,25 @@ Na folha de contato, cada corte marcado abre uma faixa de capítulo e as página
 embaixo dela — dá para ver os arquivos se formando antes de gerar. O rearranjo é adiado 120 ms
 após o último clique e leva cerca de 0,3 s numa folha de 145 páginas; marcar várias páginas
 seguidas não custa nada.
+
+## Vários arquivos de uma vez (lote)
+
+Botão "Processar vários arquivos" no cabeçalho da janela. Aceita a mesma lista de formatos de
+sempre, dois modos:
+
+- **Cortar cada arquivo em capítulos** — cada entrada vai para sua própria subpasta dentro da
+  pasta de saída escolhida, nomeada com o nome do arquivo original.
+- **Só converter para PDF** — todos os arquivos convertidos direto na pasta de saída, sem
+  subpasta. Duas entradas que gerariam o mesmo nome de saída são detectadas e a segunda é
+  recusada, em vez de sobrescrever a primeira em silêncio.
+
+Um arquivo com problema (corrompido, sem divisor, formato que nenhum conversor abre) não
+interrompe o lote — fica registrado como falha e os demais continuam. Ao final, um resumo lista
+quantos deram certo e, para cada um que falhou, o motivo.
+
+## Sobre converter PDF em slides
+
+Testado e não é oferecido. O PowerPoint não abre PDF diretamente (falha na automação). O único
+caminho que funciona é renderizar cada página como imagem e colar um slide por imagem — mas o
+texto deixa de ser editável, vira uma foto do PDF dentro do slide. Preferimos não oferecer uma
+conversão que decepciona quem espera texto editável.

@@ -118,3 +118,24 @@ def test_conversion_summary_names_the_file_and_layout(tmp_path):
 def test_conversion_summary_omits_layout_when_one_per_sheet(tmp_path):
     texto = gui.conversion_summary(tmp_path / "Aula.pdf", per_sheet=1)
     assert "por folha" not in texto
+
+
+def test_batch_summary_counts_ok_and_failed():
+    from slidecut import core
+
+    resultados = [
+        core.BatchItemResult(source=Path("a.pdf"), ok=True, written=[Path("a1.pdf")]),
+        core.BatchItemResult(source=Path("b.pdf"), ok=False, error="deu ruim"),
+    ]
+    texto = gui.batch_summary(resultados)
+    assert "1" in texto and "2" in texto
+    assert "b.pdf" in texto
+    assert "deu ruim" in texto
+
+
+def test_batch_summary_all_ok_has_no_failure_list():
+    from slidecut import core
+
+    resultados = [core.BatchItemResult(source=Path("a.pdf"), ok=True, written=[Path("a1.pdf")])]
+    texto = gui.batch_summary(resultados)
+    assert "falh" not in texto.lower()
