@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover - depende do ambiente
     TkinterDnD = None
 
 WINDOW_TITLE = "slidecut"
+CREDIT = "Desenvolvido por Alex Moreira Productions"
 WINDOW_SIZE = "1060x740"
 MIN_SIZE = (900, 620)
 
@@ -306,6 +307,8 @@ class SlidecutApp:
         )
         self.batch_button.pack(side="right", padx=18)
 
+        ttk.Label(bar, text=CREDIT, style="BrandFaint.TLabel").pack(side="right", padx=(0, 4))
+
     # -------------------------------------------------------- tela: abrir
     def _build_open_screen(self) -> None:
         self.open_screen = ttk.Frame(self.root, style="Paper.TFrame")
@@ -348,7 +351,7 @@ class SlidecutApp:
         icon.create_rectangle(14, 20, 44, 30, fill=theme.CUT, outline="")
         icon.create_rectangle(14, 28, 44, 38, fill="#F2F6FA", outline="")
 
-        self.drop_label = ttk.Label(self.drop_zone, text="Arraste o arquivo para cá",
+        self.drop_label = ttk.Label(self.drop_zone, text="Arraste o(s) arquivo(s) para cá",
                                     style="SunkTitle.TLabel")
         self.drop_label.pack()
         ttk.Label(self.drop_zone, text="pptx · docx · pdf e outros",

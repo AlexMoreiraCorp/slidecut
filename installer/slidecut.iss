@@ -17,8 +17,8 @@
 ; Compilar: ISCC.exe installer\slidecut.iss
 
 #define AppName        "slidecut"
-#define AppVersion     "0.8.0"
-#define AppPublisher   "slidecut"
+#define AppVersion     "0.8.1"
+#define AppPublisher   "Alex Moreira Productions"
 #define AppExe         "slidecut.exe"
 
 ; Usa a pasta "stable" (versao atual), nao "old" (arquivo historico): so a

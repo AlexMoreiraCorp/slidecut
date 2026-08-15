@@ -203,3 +203,7 @@ Testado e não é oferecido. O PowerPoint não abre PDF diretamente (falha na au
 caminho que funciona é renderizar cada página como imagem e colar um slide por imagem — mas o
 texto deixa de ser editável, vira uma foto do PDF dentro do slide. Preferimos não oferecer uma
 conversão que decepciona quem espera texto editável.
+
+---
+
+Desenvolvido por **Alex Moreira Productions**.

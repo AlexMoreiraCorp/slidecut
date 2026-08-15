@@ -95,6 +95,7 @@ def apply(root: tk.Misc, fonts: Fonts) -> ttk.Style:
 
     style.configure("Brand.TLabel", background=INK, foreground=SURFACE, font=fonts.brand)
     style.configure("BrandSub.TLabel", background=INK, foreground="#9EB0C6", font=fonts.body)
+    style.configure("BrandFaint.TLabel", background=INK, foreground="#4E698D", font=fonts.tiny)
 
     # Botao comum: branco com borda, sem cor de destaque.
     style.configure(
