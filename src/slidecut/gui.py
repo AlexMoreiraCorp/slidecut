@@ -26,7 +26,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import convert, core, preview, resources, theme
+from . import convert, core, layout, preview, resources, theme
 from .errors import SlidecutError
 
 try:  # arrastar arquivo para a janela; a aplicacao funciona sem isso
@@ -50,6 +50,27 @@ CARD_WIDTH = THUMBNAIL_WIDTH + 34
 CARD_EXTRA_HEIGHT = 96
 """Espaco abaixo da miniatura: legenda mais o campo de nome, que fica reservado
 tambem nas paginas sem corte para a grade nunca mudar de forma."""
+
+DEFAULT_PER_SHEET = 2
+"""Padrao pedido: dois slides por folha. Corta as folhas pela metade e o texto
+continua legivel impresso."""
+
+LAYOUT_CHOICES = [
+    ("1 — uma página por folha (original)", 1),
+    ("2 — duas páginas por folha", 2),
+    ("3 — três páginas por folha", 3),
+    ("4 — quatro páginas por folha", 4),
+]
+
+MODE_CHOICES = [
+    ("Cortar em capítulos", "cortar"),
+    ("Só converter e organizar", "converter"),
+]
+
+TARGET_CHOICES = [
+    ("PDF", "pdf"),
+    ("Documento do Word (.docx)", "docx"),
+]
 
 PRIMARY_TYPES = [
     ("Apresentações, documentos e PDF", "*.pptx *.ppt *.odp *.pps *.ppsx *.docx *.doc *.odt *.pdf"),
@@ -81,6 +102,14 @@ def no_converter_message(source: Path) -> str:
 
 def format_result_summary(result: core.ProcessResult) -> str:
     return f"{len(result.written)} arquivo(s) gravado(s) em:\n{result.outdir}"
+
+
+def conversion_summary(produced: Path, per_sheet: int) -> str:
+    """Mensagem final do modo converter."""
+    linha = f"Arquivo gerado:\n{produced.name}"
+    if per_sheet != 1:
+        linha += f"\n\nAgrupado em {layout.describe(per_sheet)}."
+    return linha + f"\n\nPasta: {produced.parent}"
 
 
 def selection_summary(selected: int, total: int) -> str:
@@ -152,6 +181,7 @@ class SlidecutApp:
         self.input_path: Path | None = None
         self.document: core.PreparedDocument | None = None
         self.last_result: core.ProcessResult | None = None
+        self.last_output_dir: Path | None = None
         self.checkbox_vars: dict[int, tk.BooleanVar] = {}
         self.title_vars: dict[int, tk.StringVar] = {}
         self.cards: dict[int, dict] = {}
@@ -259,6 +289,45 @@ class SlidecutApp:
         ttk.Checkbutton(inner, text="Nomes de arquivo sem acento",
                         variable=self.ascii_var).pack(anchor="w", pady=(14, 0))
 
+        # --- o que fazer com o arquivo ---
+        ttk.Label(inner, text="O   Q U E   F A Z E R",
+                  style="SurfaceSection.TLabel").pack(anchor="w", pady=(20, 6))
+        self.mode_var = tk.StringVar(value="cortar")
+        for rotulo, valor in MODE_CHOICES:
+            ttk.Radiobutton(inner, text=rotulo, value=valor, variable=self.mode_var,
+                            command=self._on_mode_changed).pack(anchor="w")
+
+        # Formato de saida: so faz sentido no modo converter.
+        self.target_row = ttk.Frame(inner, style="Surface.TFrame")
+        self.target_var = tk.StringVar(value="pdf")
+        ttk.Label(self.target_row, text="Converter para:",
+                  style="SurfaceMuted.TLabel").pack(side="left", padx=(20, 8))
+        ttk.Combobox(
+            self.target_row, state="readonly", width=26,
+            values=[rotulo for rotulo, _ in TARGET_CHOICES],
+            textvariable=tk.StringVar(value=TARGET_CHOICES[0][0]),
+        ).pack(side="left")
+        self.target_row.children["!combobox"].bind(
+            "<<ComboboxSelected>>", self._on_target_changed)
+        self.target_combo = self.target_row.children["!combobox"]
+
+        ttk.Label(inner, text="P Á G I N A S   P O R   F O L H A",
+                  style="SurfaceSection.TLabel").pack(anchor="w", pady=(18, 6))
+        self.per_sheet_var = tk.IntVar(value=DEFAULT_PER_SHEET)
+        self.layout_combo = ttk.Combobox(
+            inner, state="readonly", width=34,
+            values=[rotulo for rotulo, _ in LAYOUT_CHOICES],
+        )
+        self.layout_combo.current(
+            [valor for _, valor in LAYOUT_CHOICES].index(DEFAULT_PER_SHEET))
+        self.layout_combo.pack(anchor="w")
+        self.layout_combo.bind("<<ComboboxSelected>>", self._on_layout_changed)
+        ttk.Label(
+            inner,
+            text="Agrupar reduz as folhas para impressão; o tamanho do arquivo muda pouco.",
+            style="SurfaceFaint.TLabel", wraplength=440, justify="left",
+        ).pack(anchor="w", pady=(4, 0))
+
         tk.Frame(inner, background=theme.EDGE_SOFT, height=1).pack(fill="x", pady=(18, 12))
         status = ttk.Frame(inner, style="Surface.TFrame")
         status.pack(fill="x")
@@ -287,6 +356,7 @@ class SlidecutApp:
         self.open_progress = ttk.Progressbar(
             self.open_screen, mode="indeterminate", style="Cut.Horizontal.TProgressbar")
 
+        self._on_mode_changed()
         self._enable_drop_target()
 
     def _enable_drop_target(self) -> None:
@@ -409,6 +479,25 @@ class SlidecutApp:
         if chosen:
             self._set_input(Path(chosen))
 
+    def _on_mode_changed(self) -> None:
+        """No modo converter aparece o formato de saida; no corte, nao ha escolha."""
+        if self.mode_var.get() == "converter":
+            self.target_row.pack(anchor="w", pady=(6, 0))
+            self.analyse_button.configure(text="CONVERTER")
+        else:
+            self.target_row.pack_forget()
+            self.analyse_button.configure(text="ABRIR PÁGINAS")
+
+    def _on_target_changed(self, _event=None) -> None:
+        rotulo = self.target_combo.get()
+        for texto, valor in TARGET_CHOICES:
+            if texto == rotulo:
+                self.target_var.set(valor)
+                break
+
+    def _on_layout_changed(self, _event=None) -> None:
+        self.per_sheet_var.set(LAYOUT_CHOICES[self.layout_combo.current()][1])
+
     def _pick_outdir(self) -> None:
         if self.busy:
             return
@@ -439,7 +528,27 @@ class SlidecutApp:
         self._set_busy(True)
         self.open_progress.pack(side="bottom", fill="x")
         self.open_progress.start(12)
+
+        if self.mode_var.get() == "converter":
+            threading.Thread(
+                target=self._run_convert,
+                args=(source, self.outdir_var.get() or str(core.default_outdir(source)),
+                      self.target_var.get(), self.per_sheet_var.get()),
+                daemon=True,
+            ).start()
+            return
+
         threading.Thread(target=self._run_prepare, args=(source,), daemon=True).start()
+
+    def _run_convert(self, source: Path, outdir: str, to: str, per_sheet: int) -> None:
+        try:
+            produced = core.convert_document(
+                source, outdir, to=to, per_sheet=per_sheet,
+                on_progress=lambda msg: self._events.put(("status", msg)),
+            )
+            self._events.put(("converted", (produced, per_sheet)))
+        except Exception as exc:
+            self._events.put(("error", str(exc)))
 
     def _run_prepare(self, source: Path) -> None:
         try:
@@ -476,15 +585,16 @@ class SlidecutApp:
         threading.Thread(
             target=self._run_cut,
             args=(self.document, dividers, self.outdir_var.get() or None,
-                  self.ascii_var.get(), custom_titles),
+                  self.ascii_var.get(), custom_titles, self.per_sheet_var.get()),
             daemon=True,
         ).start()
 
-    def _run_cut(self, document, dividers, outdir, ascii_only, custom_titles) -> None:
+    def _run_cut(self, document, dividers, outdir, ascii_only, custom_titles,
+                 per_sheet=1) -> None:
         try:
             result = core.cut_at(
                 document, dividers, outdir=outdir, ascii_only=ascii_only,
-                custom_titles=custom_titles,
+                custom_titles=custom_titles, per_sheet=per_sheet,
                 on_progress=lambda msg: self._events.put(("status", msg)),
             )
             self._events.put(("cut", result))
@@ -724,6 +834,15 @@ class SlidecutApp:
                     self._reflow()
                     self._refresh_summary()
                     self.sheet_status.configure(text="")
+                elif kind == "converted":
+                    produced, per_sheet = payload
+                    self._set_busy(False)
+                    self._stop_progress()
+                    self.open_status.configure(text=f"Gravado: {produced.name}")
+                    self.last_output_dir = produced.parent
+                    messagebox.showinfo(
+                        WINDOW_TITLE, conversion_summary(produced, per_sheet))
+                    open_in_file_manager(produced.parent)
                 elif kind == "cut":
                     self.last_result = payload
                     self._set_busy(False)

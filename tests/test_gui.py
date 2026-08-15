@@ -93,3 +93,28 @@ def test_primary_file_types_lead_with_the_formats_people_actually_bring():
     assert "*.pptx" in first_pattern
     assert "*.docx" in first_pattern
     assert "*.pdf" in first_pattern
+
+
+def test_layout_choices_offer_one_to_four_with_two_as_default():
+    rotulos = [rotulo for rotulo, _valor in gui.LAYOUT_CHOICES]
+    valores = [valor for _rotulo, valor in gui.LAYOUT_CHOICES]
+    assert valores == [1, 2, 3, 4]
+    assert gui.DEFAULT_PER_SHEET == 2
+    assert any("1" in r for r in rotulos)
+
+
+def test_mode_choices_cover_cutting_and_converting():
+    valores = [valor for _rotulo, valor in gui.MODE_CHOICES]
+    assert "cortar" in valores
+    assert "converter" in valores
+
+
+def test_conversion_summary_names_the_file_and_layout(tmp_path):
+    texto = gui.conversion_summary(tmp_path / "Aula 01.docx", per_sheet=2)
+    assert "Aula 01.docx" in texto
+    assert "2 páginas por folha" in texto
+
+
+def test_conversion_summary_omits_layout_when_one_per_sheet(tmp_path):
+    texto = gui.conversion_summary(tmp_path / "Aula.pdf", per_sheet=1)
+    assert "por folha" not in texto

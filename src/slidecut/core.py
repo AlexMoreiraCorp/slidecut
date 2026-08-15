@@ -11,12 +11,13 @@ Manter isto fora das interfaces garante que os dois modos cortem igual.
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import analyze, convert, split, titles
+from . import analyze, convert, docx, layout, split, titles
 from .errors import NoDividerFound
 
 OUTPUT_SUFFIX = " - cortes"
@@ -105,6 +106,7 @@ def cut_at(
     ascii_only: bool = False,
     list_only: bool = False,
     custom_titles: dict[int, str] | None = None,
+    per_sheet: int = 1,
     on_progress: ProgressCallback | None = None,
 ) -> ProcessResult:
     """Grava um arquivo por capitulo usando exatamente os cortes informados.
@@ -136,8 +138,61 @@ def cut_at(
         return ProcessResult(document.divider_color_hex, chapters, resolved_outdir, written=[])
 
     written = split.write_chapters(document.pdf_path, chapters, resolved_outdir)
+
+    if per_sheet != 1:
+        _notify(on_progress, f"Agrupando em {layout.describe(per_sheet)}...")
+        for arquivo in written:
+            layout.group_pages(arquivo, arquivo, per_sheet=per_sheet)
+
     _notify(on_progress, f"{len(written)} arquivos gravados em {resolved_outdir}")
     return ProcessResult(document.divider_color_hex, chapters, resolved_outdir, written=written)
+
+
+CONVERSION_TARGETS = ("pdf", "docx")
+"""Para onde da para converter. Slides->PDF e PDF->Word funcionam bem; o
+caminho inverso, PDF->slides, foi testado e o LibreOffice gera um arquivo vazio,
+entao nao e oferecido."""
+
+
+def convert_document(
+    source: str | Path,
+    outdir: str | Path,
+    to: str = "pdf",
+    per_sheet: int = 1,
+    on_progress: ProgressCallback | None = None,
+) -> Path:
+    """Converte um arquivo inteiro, sem cortar em capitulos.
+
+    E o modo "organizar": pega uma apresentacao, documento ou PDF e devolve um
+    unico arquivo no formato pedido, opcionalmente com as paginas agrupadas.
+    """
+    if to not in CONVERSION_TARGETS:
+        raise ValueError(
+            f"formato de saida invalido: {to}. Use: {', '.join(CONVERSION_TARGETS)}"
+        )
+
+    source = Path(source).expanduser()
+    outdir = Path(outdir).expanduser()
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="slidecut-conv-") as workdir:
+        _notify(on_progress, f"Preparando {source.name}...")
+        pdf_path = convert.to_pdf(source, workdir, on_progress=on_progress)
+
+        if per_sheet != 1:
+            _notify(on_progress, f"Agrupando em {layout.describe(per_sheet)}...")
+            agrupado = Path(workdir) / "agrupado.pdf"
+            pdf_path = layout.group_pages(pdf_path, agrupado, per_sheet=per_sheet)
+
+        if to == "docx":
+            _notify(on_progress, "Convertendo em documento do Word...")
+            alvo = docx.pdf_to_docx(pdf_path, outdir / f"{source.stem}.docx")
+        else:
+            alvo = outdir / f"{source.stem}.pdf"
+            shutil.copyfile(pdf_path, alvo)
+
+    _notify(on_progress, f"Gravado: {alvo.name}")
+    return alvo
 
 
 def process(

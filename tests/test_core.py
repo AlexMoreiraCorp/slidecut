@@ -126,3 +126,46 @@ def test_cut_at_falls_back_to_page_text_when_custom_title_is_blank(deck, tmp_pat
     doc = core.prepare(deck, workdir=tmp_path / "work")
     result = core.cut_at(doc, dividers=[4], outdir=tmp_path / "out", custom_titles={4: "   "})
     assert [p.name for p in result.written] == ["01 - Abertura.pdf", "02 - Fontes.pdf"]
+
+
+def test_cut_at_groups_pages_per_sheet_when_asked(deck, tmp_path):
+    import pymupdf
+
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    result = core.cut_at(doc, dividers=[0], outdir=tmp_path / "out", per_sheet=2)
+    with pymupdf.open(str(result.written[0])) as saida:
+        assert saida.page_count == 4  # 7 paginas em folhas de 2
+
+
+def test_cut_at_keeps_one_page_per_sheet_by_default(deck, tmp_path):
+    import pymupdf
+
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    result = core.cut_at(doc, dividers=[0], outdir=tmp_path / "out")
+    with pymupdf.open(str(result.written[0])) as saida:
+        assert saida.page_count == 7
+
+
+def test_convert_document_produces_a_pdf(deck, tmp_path):
+    saida = core.convert_document(deck, tmp_path / "out", to="pdf")
+    assert saida.suffix == ".pdf"
+    assert saida.is_file()
+
+
+def test_convert_document_groups_pages(deck, tmp_path):
+    import pymupdf
+
+    saida = core.convert_document(deck, tmp_path / "out", to="pdf", per_sheet=4)
+    with pymupdf.open(str(saida)) as d:
+        assert d.page_count == 2
+
+
+def test_convert_document_produces_a_docx(deck, tmp_path):
+    saida = core.convert_document(deck, tmp_path / "out", to="docx")
+    assert saida.suffix == ".docx"
+    assert saida.read_bytes()[:2] == b"PK"
+
+
+def test_convert_document_rejects_an_unknown_target(deck, tmp_path):
+    with pytest.raises(ValueError):
+        core.convert_document(deck, tmp_path / "out", to="pptx")
