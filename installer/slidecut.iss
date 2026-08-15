@@ -17,14 +17,20 @@
 ; Compilar: ISCC.exe installer\slidecut.iss
 
 #define AppName        "slidecut"
-#define AppVersion     "0.5.0"
+#define AppVersion     "0.5.1"
 #define AppPublisher   "slidecut"
 #define AppExe         "slidecut.exe"
 
-#define LoVersion      "25.8.7.2"
-#define LoFile         "LibreOffice_25.8.7.2_Win_x86-64.msi"
-#define LoUrl          "https://downloadarchive.documentfoundation.org/libreoffice/old/25.8.7.2/win/x86_64/LibreOffice_25.8.7.2_Win_x86-64.msi"
-#define LoSha256       "4773ad68edc890c7d02ae0733710af118e7e95398a4d05077429182941604ec6"
+; Usa a pasta "stable" (versao atual), nao "old" (arquivo historico): so a
+; "stable" passa pelo redirecionador de mirrors da The Document Foundation.
+; O arquivo historico serve direto de um unico servidor de origem sem rede de
+; espelhos — medido em ~140 KB/s contra ~20 MB/s pelo mirror, 140x mais lento.
+; Contrapartida: este link muda a cada lancamento novo do LibreOffice, entao
+; versao e hash abaixo precisam ser atualizados quando isso acontecer.
+#define LoVersion      "26.2.5"
+#define LoFile         "LibreOffice_26.2.5_Win_x86-64.msi"
+#define LoUrl          "https://download.documentfoundation.org/libreoffice/stable/26.2.5/win/x86_64/LibreOffice_26.2.5_Win_x86-64.msi"
+#define LoSha256       "f15ba07bfcb0186986cf3171063506f5d207c11f8cc051ba0d135209e9e915f9"
 
 [Setup]
 AppId={{8F3C1D24-6B2E-4E77-9C3A-1D5B7E9A4C10}
