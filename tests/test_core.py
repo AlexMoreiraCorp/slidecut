@@ -149,6 +149,17 @@ def test_cut_at_keeps_the_prefix_around_a_title_the_user_typed(deck, tmp_path):
     assert result.written[0].name == "01 - Aula 02 Meu nome rev1.pdf"
 
 
+def test_cut_at_can_write_files_without_the_leading_number(deck, tmp_path):
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    result = core.cut_at(
+        doc, dividers=[0, 4], outdir=tmp_path / "out",
+        prefix="Aula 02", numbered=False,
+    )
+    assert [p.name for p in result.written] == [
+        "Aula 02 Capa.pdf", "Aula 02 Fontes.pdf",
+    ]
+
+
 def test_cut_at_without_prefix_or_suffix_names_files_as_before(deck, tmp_path):
     doc = core.prepare(deck, workdir=tmp_path / "work")
     result = core.cut_at(doc, dividers=[0, 4], outdir=tmp_path / "out")
@@ -173,6 +184,13 @@ def test_cut_at_refuses_to_leave_the_selection_with_no_page_at_all(deck, tmp_pat
         core.cut_at(
             doc, dividers=[0], outdir=tmp_path / "out", excluded_pages=set(range(7))
         )
+
+
+def test_process_can_skip_numbering_the_output_files(deck, tmp_path):
+    result = core.process(
+        deck, outdir=tmp_path / "out", prefix="Aula 02", numbered=False
+    )
+    assert result.written[0].name == "Aula 02 Capa.pdf"
 
 
 def test_process_passes_the_prefix_and_suffix_down_to_the_file_names(deck, tmp_path):

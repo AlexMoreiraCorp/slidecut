@@ -93,8 +93,15 @@ def _unique(name: str, used: set[str]) -> str:
     return unique
 
 
-def write_chapters(pdf_path: str | Path, chapters: list[Chapter], outdir: str | Path) -> list[Path]:
-    """Grava um PDF por capitulo em outdir e devolve os caminhos criados."""
+def write_chapters(
+    pdf_path: str | Path, chapters: list[Chapter], outdir: str | Path, numbered: bool = True
+) -> list[Path]:
+    """Grava um PDF por capitulo em outdir e devolve os caminhos criados.
+
+    numbered=False tira o "01 - " do nome. Faz sentido quando o usuario ja
+    escolheu um prefixo ou sufixo: o numero fica redundante e o nome funciona
+    melhor sem ele quando o objetivo e so a etiqueta.
+    """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -112,7 +119,8 @@ def write_chapters(pdf_path: str | Path, chapters: list[Chapter], outdir: str | 
                 writer.add_page(reader.pages[page])
 
             name = _unique(chapter.title, used)
-            target = outdir / f"{number:0{width}d} - {name}.pdf"
+            filename = f"{number:0{width}d} - {name}.pdf" if numbered else f"{name}.pdf"
+            target = outdir / filename
             with target.open("wb") as handle:
                 writer.write(handle)
             written.append(target)

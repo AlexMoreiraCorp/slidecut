@@ -88,3 +88,22 @@ def test_write_chapters_skips_the_excluded_pages(deck, tmp_path):
     chapters = split.build_chapters([0], page_count=7, titles=["Tudo"], excluded={1, 2})
     written = split.write_chapters(deck, chapters, tmp_path / "out")
     assert len(PdfReader(str(written[0])).pages) == 5
+
+
+# ---------------------------------------------------- numeracao opcional
+def test_write_chapters_numbers_by_default(deck, tmp_path):
+    chapters = split.build_chapters([0, 1], page_count=7, titles=["Capa", "Fim"])
+    written = split.write_chapters(deck, chapters, tmp_path / "out")
+    assert [p.name for p in written] == ["01 - Capa.pdf", "02 - Fim.pdf"]
+
+
+def test_write_chapters_can_skip_the_number(deck, tmp_path):
+    chapters = split.build_chapters([0, 1], page_count=7, titles=["Capa", "Fim"])
+    written = split.write_chapters(deck, chapters, tmp_path / "out", numbered=False)
+    assert [p.name for p in written] == ["Capa.pdf", "Fim.pdf"]
+
+
+def test_write_chapters_without_numbers_still_dedupes_repeated_titles(deck, tmp_path):
+    chapters = split.build_chapters([0, 1], page_count=7, titles=["Tema", "Tema"])
+    written = split.write_chapters(deck, chapters, tmp_path / "out", numbered=False)
+    assert [p.name for p in written] == ["Tema.pdf", "Tema (2).pdf"]

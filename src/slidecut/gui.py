@@ -37,7 +37,9 @@ except ImportError:  # pragma: no cover - depende do ambiente
 
 WINDOW_TITLE = "slidecut"
 CREDIT = "Desenvolvido por Alex Moreira Productions"
-WINDOW_SIZE = "1320x860"
+WINDOW_WIDTH, WINDOW_HEIGHT = 1320, 860
+"""Tamanho alvo numa tela grande. fit_window_geometry() encolhe isto para caber
+em telas menores, ate o piso de MIN_SIZE."""
 MIN_SIZE = (1080, 700)
 """A janela cresceu quando a tela de selecao ganhou o painel lateral: no tamanho
 antigo, abrir uma pagina de perto espremia a grade a uma coluna."""
@@ -158,16 +160,30 @@ def selection_summary(selected: int, total: int, excluded: int = 0) -> str:
 
 
 def filename_preview(
-    number: int, title: str, prefix: str = "", suffix: str = "", fallback: str = ""
+    number: int, title: str, prefix: str = "", suffix: str = "",
+    fallback: str = "", numbered: bool = True,
 ) -> str:
     """Nome exato que o arquivo vai receber, para mostrar embaixo do campo.
 
     Existe porque o nome final nao e o que o usuario digita: leva o numero do
-    capitulo na frente e o prefixo/sufixo em volta. Sem ver o resultado montado,
-    escolher um prefixo vira tentativa e erro.
+    capitulo na frente (quando numbered) e o prefixo/sufixo em volta. Sem ver o
+    resultado montado, escolher um prefixo vira tentativa e erro.
     """
     escolhido = title.strip() or fallback.strip()
-    return f"{number:02d} - {titles.decorate(escolhido, prefix, suffix)}.pdf"
+    nome = titles.decorate(escolhido, prefix, suffix)
+    return f"{number:02d} - {nome}.pdf" if numbered else f"{nome}.pdf"
+
+
+def default_numbering(prefix: str, suffix: str) -> bool:
+    """Se a numeracao "01, 02..." deve vir ligada por padrao.
+
+    Sem prefixo nem sufixo, o numero e a unica coisa que distingue um capitulo
+    do outro — fica ligado. Assim que o usuario digita um dos dois, o nome ja
+    carrega uma etiqueta propria e o numero costuma sobrar; o padrao muda para
+    desligado, mas continua sendo so um padrao: o usuario liga de volta quando
+    quiser as duas coisas.
+    """
+    return not (prefix.strip() or suffix.strip())
 
 
 def inspector_label(index: int, total: int) -> str:
@@ -176,6 +192,22 @@ def inspector_label(index: int, total: int) -> str:
 
 def colour_hex(rgb: tuple[int, int, int]) -> str:
     return "#{:02X}{:02X}{:02X}".format(*rgb)
+
+
+def fit_window_geometry(
+    screen_w: int, screen_h: int, target_w: int, target_h: int, min_w: int, min_h: int
+) -> str:
+    """Geometria "WxH+X+Y" que cabe na tela e fica centralizada.
+
+    O tamanho fixo de antes (1320x860) estourava telas pequenas — um notebook
+    de 1366x768 nao sobra espaco para a barra de tarefas. Aqui o tamanho alvo
+    encolhe para caber, sem nunca passar do minimo que a tela ainda suporta.
+    """
+    width = max(min_w, min(target_w, screen_w))
+    height = max(min_h, min(target_h, screen_h))
+    x = max(0, (screen_w - width) // 2)
+    y = max(0, (screen_h - height) // 2)
+    return f"{width}x{height}+{x}+{y}"
 
 
 def chapter_ranges(dividers: list[int], page_count: int) -> list[tuple[int, int, int]]:
@@ -291,7 +323,11 @@ class SlidecutApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(WINDOW_TITLE)
-        self.root.geometry(WINDOW_SIZE)
+        self.root.update_idletasks()
+        self.root.geometry(fit_window_geometry(
+            root.winfo_screenwidth(), root.winfo_screenheight(),
+            WINDOW_WIDTH, WINDOW_HEIGHT, *MIN_SIZE,
+        ))
         self.root.minsize(*MIN_SIZE)
         self.root.configure(background=theme.PAPER)
         apply_window_icon(root)
@@ -326,6 +362,11 @@ class SlidecutApp:
         self._inspect_image: tk.PhotoImage | None = None
         self.prefix_var = tk.StringVar()
         self.suffix_var = tk.StringVar()
+        self.numbered_var = tk.BooleanVar(value=True)
+        self._numbered_touched = False
+        """Vira True assim que o usuario mexe no check manualmente: dali em
+        diante o padrao automatico (numerar so quando nao ha prefixo/sufixo)
+        para de sobrescrever a escolha dele a cada tecla digitada."""
 
         self._build_header()
         self._build_credit_strip()
@@ -642,13 +683,22 @@ class SlidecutApp:
         ttk.Entry(inner, textvariable=self.prefix_var, width=16).pack(side="left", padx=(6, 14))
         ttk.Label(inner, text="Depois:", style="SunkMuted.TLabel").pack(side="left")
         ttk.Entry(inner, textvariable=self.suffix_var, width=16).pack(side="left", padx=(6, 0))
-        ttk.Label(inner, text="Entram em todos os arquivos gerados.",
-                  style="SunkFaint.TLabel").pack(side="left", padx=(14, 0))
+
+        self.numbered_check = tk.Checkbutton(
+            inner, text="numerar (01, 02...)", variable=self.numbered_var,
+            font=self.fonts.small, background=theme.SURFACE_SUNK,
+            activebackground=theme.SURFACE_SUNK, foreground=theme.SLATE,
+            activeforeground=theme.SLATE, selectcolor=theme.SURFACE_SUNK,
+            bd=0, highlightthickness=0, cursor="hand2",
+            command=self._on_numbered_touched,
+        )
+        self.numbered_check.pack(side="left", padx=(18, 0))
+
         self.summary_label = ttk.Label(inner, text="", style="SunkMuted.TLabel")
         self.summary_label.pack(side="right")
 
         for var in (self.prefix_var, self.suffix_var):
-            var.trace_add("write", lambda *_a: self._refresh_name_previews())
+            var.trace_add("write", lambda *_a: self._on_naming_changed())
 
     def _build_inspector(self, parent: tk.Widget) -> None:
         """Painel lateral com a pagina aberta em tamanho grande.
@@ -788,6 +838,12 @@ class SlidecutApp:
         ttk.Entry(naming, textvariable=self.prefix_var, width=16).pack(side="left", padx=(6, 14))
         ttk.Label(naming, text="Depois:", style="PaperMuted.TLabel").pack(side="left")
         ttk.Entry(naming, textvariable=self.suffix_var, width=16).pack(side="left", padx=(6, 0))
+        tk.Checkbutton(
+            naming, text="numerar (01, 02...)", variable=self.numbered_var,
+            font=self.fonts.small, background=theme.PAPER, activebackground=theme.PAPER,
+            foreground=theme.SLATE, activeforeground=theme.SLATE, selectcolor=theme.PAPER,
+            bd=0, highlightthickness=0, cursor="hand2", command=self._on_numbered_touched,
+        ).pack(side="left", padx=(18, 0))
 
         self.batch_mode_var = tk.StringVar(value="cortar")
         modes = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 4))
@@ -906,12 +962,12 @@ class SlidecutApp:
         threading.Thread(
             target=self._run_batch,
             args=(files, outdir, mode, per_sheet,
-                  self.prefix_var.get(), self.suffix_var.get()),
+                  self.prefix_var.get(), self.suffix_var.get(), self.numbered_var.get()),
             daemon=True,
         ).start()
 
     def _run_batch(self, files: list[Path], outdir: str, mode: str, per_sheet: int,
-                   prefix: str = "", suffix: str = "") -> None:
+                   prefix: str = "", suffix: str = "", numbered: bool = True) -> None:
         def progress(msg: str) -> None:
             self._events.put(("batch_status", msg))
 
@@ -927,7 +983,7 @@ class SlidecutApp:
             else:
                 results = core.process_batch(files, outdir, per_sheet=per_sheet,
                                              on_progress=progress, on_item=item,
-                                             prefix=prefix, suffix=suffix)
+                                             prefix=prefix, suffix=suffix, numbered=numbered)
             self._events.put(("batch_done", results))
         except Exception as exc:
             self._events.put(("error", str(exc)))
@@ -1086,17 +1142,18 @@ class SlidecutApp:
             target=self._run_cut,
             args=(self.document, dividers, self.outdir_var.get() or None,
                   self.ascii_var.get(), custom_titles, self.per_sheet_var.get(),
-                  self.prefix_var.get(), self.suffix_var.get(), excluded),
+                  self.prefix_var.get(), self.suffix_var.get(), excluded,
+                  self.numbered_var.get()),
             daemon=True,
         ).start()
 
     def _run_cut(self, document, dividers, outdir, ascii_only, custom_titles,
-                 per_sheet=1, prefix="", suffix="", excluded=None) -> None:
+                 per_sheet=1, prefix="", suffix="", excluded=None, numbered=True) -> None:
         try:
             result = core.cut_at(
                 document, dividers, outdir=outdir, ascii_only=ascii_only,
                 custom_titles=custom_titles, per_sheet=per_sheet,
-                prefix=prefix, suffix=suffix, excluded_pages=excluded,
+                prefix=prefix, suffix=suffix, excluded_pages=excluded, numbered=numbered,
                 on_progress=lambda msg: self._events.put(("status", msg)),
             )
             self._events.put(("cut", result))
@@ -1268,11 +1325,22 @@ class SlidecutApp:
         parts["name_preview"].configure(text=filename_preview(
             number, self.title_vars[index].get(),
             self.prefix_var.get(), self.suffix_var.get(), parts["fallback"],
+            numbered=self.numbered_var.get(),
         ))
 
     def _refresh_name_previews(self) -> None:
         for index in list(self.cards):
             self._refresh_name_preview(index)
+
+    def _on_numbered_touched(self) -> None:
+        """O usuario mexeu no check a mao: o padrao automatico para de decidir por ele."""
+        self._numbered_touched = True
+        self._refresh_name_previews()
+
+    def _on_naming_changed(self) -> None:
+        if not self._numbered_touched:
+            self.numbered_var.set(default_numbering(self.prefix_var.get(), self.suffix_var.get()))
+        self._refresh_name_previews()
 
     def _toggle(self, index: int) -> None:
         var = self.checkbox_vars.get(index)
@@ -1603,14 +1671,55 @@ def apply_window_icon(root: tk.Tk) -> None:
         pass
 
 
+def _enable_dpi_awareness() -> None:
+    """Declara ao Windows que o app desenha na resolucao real do monitor.
+
+    Sem isso, o Windows trata o programa como se ele so soubesse desenhar a
+    96 DPI e esbagaca (bitmap-stretch) a janela inteira para bater com a
+    escala configurada — 125%, 150% etc. E exatamente o "parece de baixa
+    resolucao": o problema nao e o desenho, e o Windows escalando o resultado
+    depois de pronto. Precisa rodar antes de qualquer janela existir.
+    """
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
+
+
+def _apply_dpi_scaling(root: tk.Tk) -> None:
+    """Ajusta a escala do Tk para bater com a DPI real, depois da janela criada.
+
+    Com o processo ja marcado como DPI-aware, o Windows entrega a DPI real do
+    monitor; sem repassar isso ao Tk, ele so assume 96 e o texto sai borrado
+    de novo em qualquer tela acima de 100%.
+    """
+    try:
+        dpi = root.winfo_fpixels("1i")
+        if dpi > 0:
+            root.tk.call("tk", "scaling", dpi / 72.0)
+    except tk.TclError:  # pragma: no cover - depende do ambiente
+        pass
+
+
 def make_root() -> tk.Tk:
     """Raiz com suporte a arrastar arquivo quando a biblioteca estiver presente."""
+    _enable_dpi_awareness()
     if TkinterDnD is not None:
         try:
-            return TkinterDnD.Tk()
+            root = TkinterDnD.Tk()
         except Exception:  # pragma: no cover - depende do ambiente
-            pass
-    return tk.Tk()
+            root = tk.Tk()
+    else:
+        root = tk.Tk()
+    _apply_dpi_scaling(root)
+    return root
 
 
 def main() -> int:

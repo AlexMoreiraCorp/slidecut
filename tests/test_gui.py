@@ -222,6 +222,55 @@ def test_filename_preview_cleans_characters_windows_refuses():
     assert "/" not in gui.filename_preview(1, "a/b")
 
 
+def test_filename_preview_can_drop_the_leading_number():
+    nome = gui.filename_preview(3, "Remédios", prefix="Aula 02", numbered=False)
+    assert nome == "Aula 02 Remédios.pdf"
+    assert not nome.startswith("03")
+
+
+# ------------------------------------------- numeracao automatica (padrao)
+def test_numbering_defaults_on_when_there_is_no_prefix_or_suffix():
+    assert gui.default_numbering("", "") is True
+
+
+def test_numbering_defaults_off_once_a_prefix_is_typed():
+    assert gui.default_numbering("Aula 02", "") is False
+
+
+def test_numbering_defaults_off_once_a_suffix_is_typed():
+    assert gui.default_numbering("", "rev1") is False
+
+
+def test_numbering_default_ignores_whitespace_only_fields():
+    assert gui.default_numbering("   ", "") is True
+
+
+# ------------------------------------------------- geometria responsiva
+def test_fit_window_geometry_uses_the_target_size_on_a_big_screen():
+    assert gui.fit_window_geometry(1920, 1080, 1320, 860, 1080, 700) == "1320x860+300+110"
+
+
+def test_fit_window_geometry_shrinks_to_fit_a_small_screen():
+    geometria = gui.fit_window_geometry(1366, 768, 1320, 860, 1080, 700)
+    largura, altura = geometria.split("+")[0].split("x")
+    assert int(largura) <= 1366
+    assert int(altura) <= 768
+
+
+def test_fit_window_geometry_never_goes_below_the_minimum_size():
+    geometria = gui.fit_window_geometry(800, 600, 1320, 860, 1080, 700)
+    largura, altura = geometria.split("+")[0].split("x")
+    assert int(largura) == 1080
+    assert int(altura) == 700
+
+
+def test_fit_window_geometry_centres_the_window():
+    geometria = gui.fit_window_geometry(1600, 900, 1200, 800, 1080, 700)
+    _size, x, y = geometria.split("+")
+    assert x == str((1600 - 1200) // 2)
+    assert y == str((900 - 800) // 2)
+
+
 # ----------------------------------------- resumo com paginas fora do corte
 def test_selection_summary_mentions_pages_left_out_of_the_cut():
     texto = gui.selection_summary(3, 145, excluded=4)

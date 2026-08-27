@@ -246,7 +246,7 @@ def test_typing_a_prefix_updates_every_preview_at_once(deck_ready):
     deck_ready.suffix_var.set("rev1")
     deck_ready.root.update()
     previa = deck_ready.cards[0]["name_preview"].cget("text")
-    assert previa.startswith("01 - Aula 02")
+    assert previa.startswith("Aula 02"), "prefixo digitado desliga a numeracao por padrao"
     assert "rev1.pdf" in previa
 
 
@@ -254,7 +254,24 @@ def test_editing_the_title_keeps_the_prefix_and_suffix(deck_ready):
     deck_ready.prefix_var.set("Aula 02")
     deck_ready.title_vars[0].set("Meu nome")
     deck_ready.root.update()
-    assert deck_ready.cards[0]["name_preview"].cget("text") == "01 - Aula 02 Meu nome.pdf"
+    assert deck_ready.cards[0]["name_preview"].cget("text") == "Aula 02 Meu nome.pdf"
+
+
+def test_the_numbering_checkbox_can_be_forced_back_on_despite_a_prefix(deck_ready):
+    """"Somente se o usuario quiser": o padrao muda, mas o controle continua ali."""
+    deck_ready.prefix_var.set("Aula 02")
+    deck_ready.root.update()
+    assert deck_ready.numbered_var.get() is False
+
+    deck_ready.numbered_var.set(True)
+    deck_ready._on_numbered_touched()
+    deck_ready.root.update()
+    assert deck_ready.cards[0]["name_preview"].cget("text").startswith("01 - Aula 02")
+
+    # Depois de tocado a mao, novas teclas no prefixo nao derrubam a escolha.
+    deck_ready.suffix_var.set("rev2")
+    deck_ready.root.update()
+    assert deck_ready.numbered_var.get() is True
 
 
 def test_emptying_the_title_falls_back_to_the_page_text(deck_ready):

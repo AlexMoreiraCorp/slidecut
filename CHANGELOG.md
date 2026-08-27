@@ -1,0 +1,85 @@
+# Notas de atualização
+
+## 0.10.1 — 2026-08-27
+
+### Numeração opcional
+- A numeração automática (`01 -`, `02 -`...) continua existindo como antes, mas o **padrão
+  mudou**: assim que um prefixo ou sufixo é preenchido, o número deixa de vir por padrão — o
+  nome já tem uma etiqueta própria e o número costuma sobrar.
+- Novo check **"numerar (01, 02...)"** ao lado dos campos Antes/Depois — na tela de seleção e
+  no lote — para religar a numeração quando o usuário quiser as duas coisas juntas. Uma vez
+  tocado à mão, o check para de mudar sozinho: a escolha do usuário passa a valer sobre o padrão
+  automático.
+
+### Nitidez
+- Corrigida a causa raiz do aplicativo aparecer borrado/"baixa resolução": o processo não se
+  declarava compatível com a escala de DPI do Windows, então o sistema desenhava a janela a
+  96 DPI e esticava o resultado por bitmap para bater com a escala do monitor (125%, 150%...).
+  Agora o processo é marcado como DPI-aware por monitor antes de a janela existir, e a escala do
+  Tk é ajustada para a DPI real assim que a janela é criada. Texto e ícones saem nítidos em
+  qualquer escala do Windows.
+
+### Compatibilidade com tamanhos de tela
+- O tamanho inicial da janela deixou de ser fixo (1320×860) e passou a se ajustar à tela
+  disponível: encolhe para caber em notebooks menores (ex. 1366×768 com barra de tarefas) sem
+  nunca ficar menor que o mínimo utilizável, e centraliza automaticamente.
+
+## 0.10.0 — 2026-08-27
+
+### Nomes dos arquivos
+- Novos campos **Antes** e **Depois** na tela de seleção e no lote: o texto digitado entra em
+  todos os arquivos gerados, inclusive nos renomeados à mão.
+- Cada página marcada agora mostra, abaixo do campo de nome, o **nome exato** que o arquivo vai
+  receber — já com número, prefixo e sufixo aplicados.
+
+### Slide matriz
+- Em decks com mais de um tom forte, a detecção automática escolhe o que mais se repete — nem
+  sempre o divisor certo. Agora dá para abrir o slide que você reconhece como modelo e usar
+  **"Usar como slide matriz"**: a cor dele passa a definir o corte do documento inteiro.
+- O painel de inspeção mostra a cor lida de cada página (hexadecimal + amostra), para comparar
+  antes de decidir.
+
+### Páginas fora do corte
+- Novo check **"entra no corte"** em cada página, ligado por padrão. Desmarcar tira a página do
+  arquivo gerado sem tocar no documento de origem — ela continua lá.
+
+### Tela de seleção
+- **Ver** e **cortar** viraram ações diferentes: um clique na miniatura abre a página no painel
+  lateral; dois cliques ampliam mais. A marca de corte ganhou faixa própria com texto
+  (`marcar corte aqui` / `CORTA AQUI`), em vez do clique-em-qualquer-canto de antes, que ligava
+  cortes sem querer e não dizia como desfazer.
+- Painel de inspeção encaixado ao lado da grade (não uma janela separada) — dá para comparar a
+  página ampliada com as miniaturas ao mesmo tempo.
+- Botão **"← Voltar ao início"** no rodapé.
+
+### Visual
+- Botões de cantos redondos em toda a aplicação.
+- **"✕ Limpar marcações"** agora em vermelho — ação que desfaz trabalho fica visualmente distinta.
+- Paleta ampliada com cor por significado: azul = página em inspeção, roxo = slide matriz,
+  verde = entra no corte, vermelho = desfazer. Laranja segue reservado só para "corta aqui".
+- Fonte principal passou para Segoe UI Variable (com reserva para Segoe UI).
+
+### Correções (herdadas de 0.9.1, incluídas nesta build)
+- Conversão tenta LibreOffice primeiro quando instalado; Microsoft Office vira reserva.
+- Corrigido erro `[WinError 5] Acesso negado` esporádico ao agrupar páginas por folha (retry
+  automático).
+- Tela de lote: botão "Voltar", seleção de arquivos com contraste visível, contagem de
+  selecionados no rodapé.
+
+### Testes
+- Nova suíte `tests/test_gui_smoke.py` sobe a janela de verdade e testa a fiação entre widgets.
+- Cobertura total: 54% → 87%.
+
+---
+
+## 0.9.1 — 2026-08-27
+
+- `convert.to_pdf` tenta LibreOffice primeiro quando instalado; Office vira reserva.
+- Corrigido `[WinError 5]` passageiro no agrupamento de páginas (antivírus/indexador segurando
+  o arquivo recém-escrito) — causa real do erro relatado pelo usuário.
+- Tela de lote: botão "Voltar" no rodapé, seleção com contraste alto, contador de selecionados.
+- Removida da tela inicial a mensagem "será convertido pelo Office/LibreOffice".
+
+## 0.9.0 e anteriores
+
+Ver histórico de commits no repositório.

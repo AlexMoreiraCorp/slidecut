@@ -134,6 +134,7 @@ def cut_at(
     prefix: str = "",
     suffix: str = "",
     excluded_pages: set[int] | frozenset[int] | None = None,
+    numbered: bool = True,
 ) -> ProcessResult:
     """Grava um arquivo por capitulo usando exatamente os cortes informados.
 
@@ -181,7 +182,7 @@ def cut_at(
     if list_only:
         return ProcessResult(document.divider_color_hex, chapters, resolved_outdir, written=[])
 
-    written = split.write_chapters(document.pdf_path, chapters, resolved_outdir)
+    written = split.write_chapters(document.pdf_path, chapters, resolved_outdir, numbered=numbered)
 
     if per_sheet != 1:
         _notify(on_progress, f"Agrupando em {layout.describe(per_sheet)}...")
@@ -269,6 +270,7 @@ def process_batch(
     on_item: BatchItemCallback | None = None,
     prefix: str = "",
     suffix: str = "",
+    numbered: bool = True,
 ) -> list[BatchItemResult]:
     """Corta varios arquivos de uma vez, cada um na sua propria subpasta.
 
@@ -303,6 +305,7 @@ def process_batch(
                 on_progress=on_progress,
                 prefix=prefix,
                 suffix=suffix,
+                numbered=numbered,
             )
             results.append(BatchItemResult(source, ok=True, written=result.written))
         except Exception as exc:
@@ -373,6 +376,7 @@ def process(
     on_progress: ProgressCallback | None = None,
     prefix: str = "",
     suffix: str = "",
+    numbered: bool = True,
 ) -> ProcessResult:
     """Corte automatico ponta a ponta: converte, detecta a cor e grava.
 
@@ -405,4 +409,5 @@ def process(
             on_progress=on_progress,
             prefix=prefix,
             suffix=suffix,
+            numbered=numbered,
         )
