@@ -427,7 +427,7 @@ class SlidecutApp:
         outer.pack(side="left", fill="both", expand=True)
         label = tk.Label(outer, text=text, background=fill, foreground=fg, font=font, pady=13)
         label.pack(fill="both", expand=True)
-        # Sublinha na cor do topo (INK), nao laranja: laranja e reservado para
+        # Sublinha na cor do topo (INK), nao dourado: dourado e reservado para
         # "cortar aqui" em algum lugar do fluxo, e escolher a aba nao e um corte.
         tk.Frame(outer, background=theme.INK if is_active else fill, height=3).pack(
             fill="x", side="bottom")
@@ -492,7 +492,7 @@ class SlidecutApp:
         )
         self.pick_input_button.pack()
 
-        self.chosen_label = ttk.Label(inner, text="", style="Surface.TLabel")
+        self.chosen_label = ttk.Label(inner, text="", style="SurfaceChosen.TLabel")
         self.chosen_label.pack(anchor="w", pady=(14, 0))
 
         ttk.Label(inner, text="P A S T A   D E   S A Í D A",

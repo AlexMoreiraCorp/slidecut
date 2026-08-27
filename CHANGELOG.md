@@ -1,5 +1,14 @@
 # Notas de atualização
 
+## 0.10.2 — 2026-08-27
+
+### Visual
+- Paleta trocada de laranja para dourado escuro (mais vivo): botão principal, marca de "corta
+  aqui", detalhes de destaque em toda a aplicação.
+- O nome do arquivo escolhido ("Selecionado: nome.pptx") passou a aparecer em dourado escuro e
+  negrito — antes usava a mesma cor neutra do resto do texto e passava despercebido ao arrastar
+  um arquivo para a janela.
+
 ## 0.10.1 — 2026-08-27
 
 ### Numeração opcional

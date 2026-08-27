@@ -4,15 +4,15 @@ A tela e uma mesa de luz: papel cinza-frio, azul-tinta, e as paginas em cima.
 Cor aqui nao decora — cada tom quer dizer exatamente um estado, e por isso ha
 poucos e sempre os mesmos:
 
-    laranja  CUT     esta pagina abre um capitulo ("corta aqui")
+    dourado  CUT     esta pagina abre um capitulo ("corta aqui")
     azul     FOCUS   estou olhando esta pagina de perto
     roxo     MATRIX  esta pagina e o slide matriz, o padrao do corte
     verde    KEEP    esta pagina entra no arquivo gerado
     vermelho DANGER  isto desfaz o que voce marcou
 
 Nenhum botao decorativo usa nenhuma dessas cores fora do seu significado. Um
-botao que so navega e branco com borda; o unico laranja da tela e o que gera os
-cortes, porque e a acao que o laranja quer dizer.
+botao que so navega e branco com borda; o unico dourado da tela e o que gera
+os cortes, porque e a acao que o dourado quer dizer.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ SLATE_LIGHT = "#8C9BAC"
 EDGE = "#D3DAE1"
 EDGE_SOFT = "#E7ECF1"
 
-CUT = "#E2711D"
-CUT_DARK = "#C55F12"
-CUT_SOFT = "#FDF0E4"
+CUT = "#C9971A"
+CUT_DARK = "#A87710"
+CUT_SOFT = "#FBF1D8"
 
 # Desfazer marcacoes. Vermelho porque apaga trabalho do usuario, e ele precisa
 # ver isso antes de clicar, nao depois.
@@ -283,6 +283,11 @@ def apply(root: tk.Misc, fonts: Fonts) -> ttk.Style:
         style.configure(f"{name}Title.TLabel", background=bg, foreground=INK, font=fonts.title)
         style.configure(f"{name}Section.TLabel", background=bg, foreground=CUT,
                         font=fonts.section)
+        # Arquivo escolhido: dourado e negrito, para nunca passar despercebido
+        # que ja existe uma selecao — e a mesma cor do "corta aqui", que e a
+        # unica outra coisa que precisa saltar aos olhos na tela.
+        style.configure(f"{name}Chosen.TLabel", background=bg, foreground=CUT_DARK,
+                        font=fonts.body_bold)
 
     style.configure("Brand.TLabel", background=INK, foreground=SURFACE, font=fonts.brand)
     style.configure("BrandSub.TLabel", background=INK, foreground="#9EB0C6", font=fonts.body)
