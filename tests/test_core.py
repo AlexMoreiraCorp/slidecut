@@ -128,6 +128,84 @@ def test_cut_at_falls_back_to_page_text_when_custom_title_is_blank(deck, tmp_pat
     assert [p.name for p in result.written] == ["01 - Abertura.pdf", "02 - Fontes.pdf"]
 
 
+def test_cut_at_wraps_every_name_with_the_prefix_and_suffix(deck, tmp_path):
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    result = core.cut_at(
+        doc, dividers=[0, 4], outdir=tmp_path / "out", prefix="Aula 02", suffix="rev1"
+    )
+    assert [p.name for p in result.written] == [
+        "01 - Aula 02 Capa rev1.pdf",
+        "02 - Aula 02 Fontes rev1.pdf",
+    ]
+
+
+def test_cut_at_keeps_the_prefix_around_a_title_the_user_typed(deck, tmp_path):
+    """Item 2 do pedido: editar o titulo nao pode derrubar o prefixo escolhido."""
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    result = core.cut_at(
+        doc, dividers=[0], outdir=tmp_path / "out",
+        custom_titles={0: "Meu nome"}, prefix="Aula 02", suffix="rev1",
+    )
+    assert result.written[0].name == "01 - Aula 02 Meu nome rev1.pdf"
+
+
+def test_cut_at_without_prefix_or_suffix_names_files_as_before(deck, tmp_path):
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    result = core.cut_at(doc, dividers=[0, 4], outdir=tmp_path / "out")
+    assert [p.name for p in result.written] == ["01 - Capa.pdf", "02 - Fontes.pdf"]
+
+
+def test_cut_at_leaves_out_the_pages_the_user_unchecked(deck, tmp_path):
+    """Item 6: a pagina continua no documento de origem, so nao entra no corte."""
+    import pymupdf
+
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    result = core.cut_at(doc, dividers=[0], outdir=tmp_path / "out", excluded_pages={2, 3})
+    with pymupdf.open(str(result.written[0])) as saida:
+        assert saida.page_count == 5
+    with pymupdf.open(str(deck)) as origem:
+        assert origem.page_count == 7
+
+
+def test_cut_at_refuses_to_leave_the_selection_with_no_page_at_all(deck, tmp_path):
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    with pytest.raises(NoDividerFound):
+        core.cut_at(
+            doc, dividers=[0], outdir=tmp_path / "out", excluded_pages=set(range(7))
+        )
+
+
+def test_process_passes_the_prefix_and_suffix_down_to_the_file_names(deck, tmp_path):
+    result = core.process(deck, outdir=tmp_path / "out", prefix="Aula 02", suffix="rev1")
+    assert result.written[0].name == "01 - Aula 02 Capa rev1.pdf"
+
+
+def test_process_batch_names_every_file_with_the_same_prefix(deck, tmp_path):
+    outros = tmp_path / "outro.pdf"
+    outros.write_bytes(deck.read_bytes())
+    resultados = core.process_batch(
+        [deck, outros], outdir=tmp_path / "lote", prefix="Turma A"
+    )
+    assert all(r.ok for r in resultados)
+    gerados = [p.name for r in resultados for p in r.written]
+    assert all("Turma A" in nome for nome in gerados)
+
+
+def test_prepare_uses_the_matrix_page_tone_instead_of_the_most_repeated_one(
+    deck_two_divider_colors, tmp_path
+):
+    """Item 3: o slide matriz manda no padrao de corte."""
+    doc = core.prepare(deck_two_divider_colors, workdir=tmp_path / "work", matrix_page=2)
+    assert doc.suggested_dividers == [2, 6]
+
+
+def test_prepare_without_a_matrix_page_keeps_detecting_on_its_own(
+    deck_two_divider_colors, tmp_path
+):
+    doc = core.prepare(deck_two_divider_colors, workdir=tmp_path / "work")
+    assert doc.suggested_dividers == [0, 4, 7]
+
+
 def test_cut_at_groups_pages_per_sheet_when_asked(deck, tmp_path):
     import pymupdf
 

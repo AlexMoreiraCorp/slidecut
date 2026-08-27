@@ -72,6 +72,29 @@ def deck(tmp_path):
     return build_pdf(tmp_path / "deck.pdf", spec)
 
 
+BLUE = (0.12, 0.29, 0.65)
+
+
+@pytest.fixture
+def deck_two_divider_colors(tmp_path):
+    """Dois tons divisores no mesmo baralho: azul em tres paginas, laranja em duas.
+
+    A deteccao automatica escolhe o azul, por ser o que mais se repete. Serve
+    para provar que o slide matriz manda mais que a contagem.
+    """
+    spec = [
+        (BLUE, "Bloco A"),
+        (WHITE, "conteudo 1"),
+        (ORANGE, "Bloco B"),
+        (WHITE, "conteudo 2"),
+        (BLUE, "Bloco C"),
+        (WHITE, "conteudo 3"),
+        (ORANGE, "Bloco D"),
+        (BLUE, "Bloco E"),
+    ]
+    return build_pdf(tmp_path / "dois-tons.pdf", spec)
+
+
 @pytest.fixture
 def deck_no_dividers(tmp_path):
     spec = [(WHITE, f"pagina {i}") for i in range(4)]

@@ -15,34 +15,69 @@ WHOLE_DOC_TITLE = "Documento completo"
 
 @dataclass(frozen=True)
 class Chapter:
-    """Intervalo de paginas [start, end) com o titulo lido do slide divisor."""
+    """Intervalo de paginas [start, end) com o titulo lido do slide divisor.
+
+    pages guarda quais paginas desse intervalo entram de fato no arquivo. Fica
+    em None quando entram todas — o caso normal. O usuario pode desmarcar
+    paginas soltas na tela de selecao: elas somem do arquivo gerado, mas o
+    intervalo do capitulo continua o mesmo, senao o capitulo seguinte mudaria de
+    lugar so porque alguem tirou uma pagina do meio.
+    """
 
     start: int
     end: int
     title: str
+    pages: tuple[int, ...] | None = None
+
+    @property
+    def page_numbers(self) -> tuple[int, ...]:
+        if self.pages is None:
+            return tuple(range(self.start, self.end))
+        return self.pages
 
     @property
     def page_count(self) -> int:
-        return self.end - self.start
+        return len(self.page_numbers)
 
 
-def build_chapters(dividers: list[int], page_count: int, titles: list[str]) -> list[Chapter]:
-    """Converte os indices dos divisores em intervalos continuos que cobrem o PDF."""
+def build_chapters(
+    dividers: list[int],
+    page_count: int,
+    titles: list[str],
+    excluded: set[int] | frozenset[int] | None = None,
+) -> list[Chapter]:
+    """Converte os indices dos divisores em intervalos continuos que cobrem o PDF.
+
+    excluded lista paginas que ficam de fora dos arquivos gerados. Um capitulo
+    que perca todas as suas paginas some do resultado: gravar um PDF vazio nao
+    ajudaria ninguem.
+    """
     if len(dividers) != len(titles):
         raise ValueError(f"{len(dividers)} divisores para {len(titles)} titulos")
     if page_count <= 0:
         return []
+
     if not dividers:
-        return [Chapter(0, page_count, WHOLE_DOC_TITLE)]
+        starts, names = [0], [WHOLE_DOC_TITLE]
+    else:
+        starts = list(dividers)
+        names = list(titles)
+        if starts[0] > 0:
+            starts.insert(0, 0)
+            names.insert(0, INTRO_TITLE)
 
-    starts = list(dividers)
-    names = list(titles)
-    if starts[0] > 0:
-        starts.insert(0, 0)
-        names.insert(0, INTRO_TITLE)
-
+    skip = frozenset(excluded or ())
     bounds = starts[1:] + [page_count]
-    return [Chapter(s, e, t) for s, e, t in zip(starts, bounds, names) if e > s]
+
+    chapters = []
+    for start, end, title in zip(starts, bounds, names):
+        if end <= start:
+            continue
+        kept = tuple(p for p in range(start, end) if p not in skip)
+        if not kept:
+            continue
+        chapters.append(Chapter(start, end, title, pages=kept if skip else None))
+    return chapters
 
 
 def _unique(name: str, used: set[str]) -> str:
@@ -73,7 +108,7 @@ def write_chapters(pdf_path: str | Path, chapters: list[Chapter], outdir: str | 
         reader = PdfReader(source)
         for number, chapter in enumerate(chapters, start=1):
             writer = PdfWriter()
-            for page in range(chapter.start, chapter.end):
+            for page in chapter.page_numbers:
                 writer.add_page(reader.pages[page])
 
             name = _unique(chapter.title, used)

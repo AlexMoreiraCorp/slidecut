@@ -79,8 +79,13 @@ def prepare(
     tolerance: float = analyze.DEFAULT_TOLERANCE,
     min_coverage: float = analyze.MIN_COVERAGE,
     on_progress: ProgressCallback | None = None,
+    matrix_page: int | None = None,
 ) -> PreparedDocument:
     """Converte a entrada para PDF e sugere onde cortar.
+
+    matrix_page aponta um slide que o usuario reconhece como divisor: a cor dele
+    vira o padrao do corte, no lugar do palpite automatico. Serve para o deck com
+    mais de um tom forte, onde "o que mais se repete" nao e o tom certo.
 
     Nao levanta erro quando nada e detectado: no modo manual o usuario ainda
     pode marcar os cortes na mao.
@@ -92,6 +97,11 @@ def prepare(
 
     _notify(on_progress, "Analisando cores das paginas...")
     colors = analyze.page_colors(pdf_path)
+
+    if color is None and matrix_page is not None:
+        color = analyze.page_color(pdf_path, matrix_page)
+        _notify(on_progress, f"Usando a pagina {matrix_page + 1} como slide matriz.")
+
     target = color or analyze.find_divider_color(colors, tolerance, min_coverage)
 
     if target is None:
@@ -121,12 +131,22 @@ def cut_at(
     custom_titles: dict[int, str] | None = None,
     per_sheet: int = 1,
     on_progress: ProgressCallback | None = None,
+    prefix: str = "",
+    suffix: str = "",
+    excluded_pages: set[int] | frozenset[int] | None = None,
 ) -> ProcessResult:
     """Grava um arquivo por capitulo usando exatamente os cortes informados.
 
     custom_titles substitui o nome lido da pagina, por indice. Serve para quando
     o corte cai numa pagina de conteudo, cujo texto corrido daria um nome ruim.
     Entradas em branco voltam a usar o texto da pagina.
+
+    prefix e suffix envolvem todos os nomes gerados, inclusive os que o usuario
+    digitou: quem escolheu um prefixo quer ele em todo o lote, e nao teria por
+    que redigita-lo capitulo a capitulo.
+
+    excluded_pages sao paginas que ficam de fora dos arquivos gerados. O arquivo
+    de origem nao e tocado — a pagina continua la, so nao entra no corte.
     """
     clean = normalise_dividers(dividers, document.page_count)
     if not clean:
@@ -144,7 +164,18 @@ def cut_at(
             else fallback
             for index, fallback in zip(clean, chapter_titles)
         ]
-    chapters = split.build_chapters(clean, document.page_count, chapter_titles)
+    if prefix.strip() or suffix.strip():
+        chapter_titles = [
+            titles.decorate(name, prefix, suffix, ascii_only) for name in chapter_titles
+        ]
+
+    chapters = split.build_chapters(
+        clean, document.page_count, chapter_titles, excluded=excluded_pages
+    )
+    if not chapters:
+        raise NoDividerFound(
+            "todas as paginas foram desmarcadas; nao sobrou nada para gravar."
+        )
     _notify(on_progress, f"{len(chapters)} capitulos identificados.")
 
     if list_only:
@@ -236,6 +267,8 @@ def process_batch(
     per_sheet: int = 1,
     on_progress: ProgressCallback | None = None,
     on_item: BatchItemCallback | None = None,
+    prefix: str = "",
+    suffix: str = "",
 ) -> list[BatchItemResult]:
     """Corta varios arquivos de uma vez, cada um na sua propria subpasta.
 
@@ -268,6 +301,8 @@ def process_batch(
                 ascii_only=ascii_only,
                 per_sheet=per_sheet,
                 on_progress=on_progress,
+                prefix=prefix,
+                suffix=suffix,
             )
             results.append(BatchItemResult(source, ok=True, written=result.written))
         except Exception as exc:
@@ -336,6 +371,8 @@ def process(
     list_only: bool = False,
     per_sheet: int = 1,
     on_progress: ProgressCallback | None = None,
+    prefix: str = "",
+    suffix: str = "",
 ) -> ProcessResult:
     """Corte automatico ponta a ponta: converte, detecta a cor e grava.
 
@@ -366,4 +403,6 @@ def process(
             list_only=list_only,
             per_sheet=per_sheet,
             on_progress=on_progress,
+            prefix=prefix,
+            suffix=suffix,
         )

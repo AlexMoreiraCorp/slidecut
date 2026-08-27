@@ -126,6 +126,23 @@ def page_colors(pdf_path: str | Path, scale: float = RENDER_SCALE) -> list[PageC
     return colors
 
 
+def page_color(pdf_path: str | Path, index: int, scale: float = RENDER_SCALE) -> RGB:
+    """Cor dominante de uma unica pagina — a base do "slide matriz".
+
+    Em vez de deixar o programa adivinhar qual tom separa os capitulos, o
+    usuario aponta um slide que ele sabe ser divisor e o corte passa a seguir a
+    cor daquele slide. Resolve o deck com mais de um tom forte, onde a contagem
+    automatica escolheria o grupo errado.
+    """
+    matrix = pymupdf.Matrix(scale, scale)
+    with open_pdf(pdf_path) as doc:
+        if not 0 <= index < doc.page_count:
+            raise IndexError(f"pagina {index} fora do documento ({doc.page_count} paginas)")
+        pixmap = doc[index].get_pixmap(matrix=matrix, colorspace=pymupdf.csRGB, alpha=False)
+        rgb, _coverage = dominant_color(pixmap)
+    return rgb
+
+
 def find_divider_color(
     colors: list[PageColor],
     tolerance: float = DEFAULT_TOLERANCE,

@@ -49,6 +49,37 @@ def test_thumbnail_title_of_a_blank_page_falls_back(tmp_path):
     assert thumb.title == "Sem titulo"
 
 
+# ------------------------------------------------ pagina ampliada (inspetor)
+def test_render_page_returns_a_single_page_at_the_asked_width(deck):
+    grande = preview.render_page(deck, 1, width=420)
+    assert grande.index == 1
+    assert abs(grande.width - 420) <= 2
+    assert grande.png.startswith(PNG_MAGIC)
+
+
+def test_render_page_is_bigger_than_the_thumbnail_of_the_same_page(deck):
+    pequena = next(iter(preview.render_thumbnails(deck, width=120)))
+    grande = preview.render_page(deck, 0, width=420)
+    assert grande.width > pequena.width
+
+
+def test_render_page_carries_the_same_caption_as_the_thumbnail(deck):
+    assert preview.render_page(deck, 1, width=300).caption == "Conceito"
+
+
+def test_render_page_refuses_a_page_outside_the_document(deck):
+    import pytest
+
+    with pytest.raises(IndexError):
+        preview.render_page(deck, 99)
+
+
+def test_render_page_releases_the_pdf(deck):
+    preview.render_page(deck, 0, width=200)
+    deck.unlink()
+    assert not deck.exists()
+
+
 def test_abandoned_thumbnail_generator_releases_the_pdf(deck):
     """Se a montagem da grade falhar no meio, o PDF nao pode ficar travado."""
     thumbs = preview.render_thumbnails(deck, width=80)

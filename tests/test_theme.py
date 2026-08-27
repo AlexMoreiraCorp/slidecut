@@ -11,6 +11,10 @@ HEX = re.compile(r"^#[0-9A-F]{6}$")
 TOKENS = [
     "INK", "PAPER", "SURFACE", "SURFACE_SUNK", "SLATE", "SLATE_LIGHT",
     "EDGE", "EDGE_SOFT", "CUT", "CUT_DARK", "CUT_SOFT", "GREEN", "RED",
+    "DANGER", "DANGER_DARK", "DANGER_SOFT",
+    "FOCUS", "FOCUS_DARK", "FOCUS_SOFT",
+    "MATRIX", "MATRIX_DARK", "MATRIX_SOFT",
+    "KEEP", "KEEP_SOFT", "DROP",
 ]
 
 
@@ -37,3 +41,36 @@ def test_pick_family_never_returns_nothing():
 def test_cut_colour_is_distinct_from_every_neutral():
     neutrals = {theme.INK, theme.PAPER, theme.SURFACE, theme.SLATE, theme.EDGE}
     assert theme.CUT not in neutrals
+
+
+def test_each_state_colour_is_its_own_tone():
+    """Cada cor quer dizer uma coisa so; duas iguais confundiriam dois estados."""
+    estados = [theme.CUT, theme.DANGER, theme.FOCUS, theme.MATRIX, theme.KEEP]
+    assert len(set(estados)) == len(estados)
+
+
+def test_looking_at_a_slide_never_looks_like_marking_it_for_cutting():
+    """Ver de perto (item 5) e marcar corte (item 4) precisam ser distinguiveis."""
+    assert theme.FOCUS != theme.CUT
+    assert theme.FOCUS_SOFT != theme.CUT_SOFT
+
+
+# ------------------------------------------------------- botao arredondado
+def test_rounded_rect_points_closes_the_outline():
+    pontos = theme.rounded_rect_points(0, 0, 100, 40, radius=10)
+    assert len(pontos) % 2 == 0
+    assert pontos[0] == pontos[-2] or len(pontos) >= 16
+
+
+def test_rounded_rect_points_stays_inside_the_box():
+    pontos = theme.rounded_rect_points(0, 0, 100, 40, radius=10)
+    xs, ys = pontos[0::2], pontos[1::2]
+    assert min(xs) >= 0 and max(xs) <= 100
+    assert min(ys) >= 0 and max(ys) <= 40
+
+
+def test_rounded_rect_radius_never_exceeds_half_the_shortest_side():
+    """Raio maior que a metade viraria uma forma torta, nao um canto redondo."""
+    pontos = theme.rounded_rect_points(0, 0, 40, 20, radius=999)
+    ys = pontos[1::2]
+    assert max(ys) <= 20

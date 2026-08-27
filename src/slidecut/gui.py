@@ -26,7 +26,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import convert, core, layout, preview, resources, theme
+from . import analyze, convert, core, layout, preview, resources, theme, titles
 from .errors import SlidecutError
 
 try:  # arrastar arquivo para a janela; a aplicacao funciona sem isso
@@ -37,8 +37,10 @@ except ImportError:  # pragma: no cover - depende do ambiente
 
 WINDOW_TITLE = "slidecut"
 CREDIT = "Desenvolvido por Alex Moreira Productions"
-WINDOW_SIZE = "1060x740"
-MIN_SIZE = (900, 620)
+WINDOW_SIZE = "1320x860"
+MIN_SIZE = (1080, 700)
+"""A janela cresceu quando a tela de selecao ganhou o painel lateral: no tamanho
+antigo, abrir uma pagina de perto espremia a grade a uma coluna."""
 
 THUMBNAIL_WIDTH = 168
 CARD_PAD = 10
@@ -48,9 +50,24 @@ REFLOW_DELAY_MS = 120
 hora; o reagrupamento por capitulo espera o usuario parar de clicar."""
 
 CARD_WIDTH = THUMBNAIL_WIDTH + 34
-CARD_EXTRA_HEIGHT = 96
-"""Espaco abaixo da miniatura: legenda mais o campo de nome, que fica reservado
-tambem nas paginas sem corte para a grade nunca mudar de forma."""
+CARD_EXTRA_HEIGHT = 230
+NAME_ROW_HEIGHT = 98
+"""Espaco abaixo da miniatura: a marca de corte, o "entra no corte", a legenda e
+o campo de nome com a previa — reservados tambem nas paginas sem corte, para a
+grade nunca mudar de forma quando uma marca liga ou desliga."""
+
+INSPECTOR_WIDTH = 460
+INSPECT_DOCKED_WIDTH = 340
+"""Largura do painel lateral, e da pagina dentro dele. A pagina fica menor que o
+painel para os botoes de acao caberem sem rolagem na janela minima; dois cliques
+pedem o render grande, que aproveita a largura toda."""
+
+CUT_ON_LABEL = "CORTA AQUI"
+CUT_OFF_LABEL = "marcar corte aqui"
+"""A marca de corte virou um alvo com nome escrito: antes, clicar em qualquer
+canto do cartao ligava o corte, e quem ligava sem querer nao achava como
+desligar. Sem icone de tesoura — o glifo nao existe na fonte da interface no
+Windows e sai desenhado torto; a faixa laranja ja diz o que e."""
 
 DEFAULT_PER_SHEET = 2
 """Padrao pedido: dois slides por folha. Corta as folhas pela metade e o texto
@@ -129,10 +146,36 @@ def batch_summary(results: list) -> str:
     return linha
 
 
-def selection_summary(selected: int, total: int) -> str:
-    if selected == 0:
-        return f"{total} páginas · nenhum corte marcado"
-    return f"{total} páginas · {selected} arquivo(s) serão gerados"
+def selection_summary(selected: int, total: int, excluded: int = 0) -> str:
+    base = (
+        f"{total} páginas · nenhum corte marcado"
+        if selected == 0
+        else f"{total} páginas · {selected} arquivo(s) serão gerados"
+    )
+    if excluded:
+        base += f" · {excluded} página(s) fora do corte"
+    return base
+
+
+def filename_preview(
+    number: int, title: str, prefix: str = "", suffix: str = "", fallback: str = ""
+) -> str:
+    """Nome exato que o arquivo vai receber, para mostrar embaixo do campo.
+
+    Existe porque o nome final nao e o que o usuario digita: leva o numero do
+    capitulo na frente e o prefixo/sufixo em volta. Sem ver o resultado montado,
+    escolher um prefixo vira tentativa e erro.
+    """
+    escolhido = title.strip() or fallback.strip()
+    return f"{number:02d} - {titles.decorate(escolhido, prefix, suffix)}.pdf"
+
+
+def inspector_label(index: int, total: int) -> str:
+    return f"Página {index + 1} de {total}"
+
+
+def colour_hex(rgb: tuple[int, int, int]) -> str:
+    return "#{:02X}{:02X}{:02X}".format(*rgb)
 
 
 def chapter_ranges(dividers: list[int], page_count: int) -> list[tuple[int, int, int]]:
@@ -265,6 +308,10 @@ class SlidecutApp:
         self.last_result: core.ProcessResult | None = None
         self.last_output_dir: Path | None = None
         self.checkbox_vars: dict[int, tk.BooleanVar] = {}
+        """Por pagina: esta pagina abre um capitulo? (a marca de corte)"""
+        self.keep_vars: dict[int, tk.BooleanVar] = {}
+        """Por pagina: esta pagina entra no arquivo gerado? Vem marcada; quem
+        desmarca tira a pagina do corte sem tirar do documento de origem."""
         self.title_vars: dict[int, tk.StringVar] = {}
         self.cards: dict[int, dict] = {}
         self.thumbnail_images: list[tk.PhotoImage] = []
@@ -273,6 +320,12 @@ class SlidecutApp:
         self._placement: dict[int, tuple[int, int]] = {}
         self._reflow_job: str | None = None
         self._events: queue.Queue[tuple[str, object]] = queue.Queue()
+        self._focused: int | None = None
+        """Pagina aberta no painel de inspecao — "estou olhando esta"."""
+        self._matrix_page: int | None = None
+        self._inspect_image: tk.PhotoImage | None = None
+        self.prefix_var = tk.StringVar()
+        self.suffix_var = tk.StringVar()
 
         self._build_header()
         self._build_credit_strip()
@@ -345,15 +398,16 @@ class SlidecutApp:
     def _build_open_screen(self) -> None:
         self.open_screen = ttk.Frame(self.root, style="Paper.TFrame")
 
-        footer = tk.Frame(self.open_screen, background=theme.SURFACE, height=64)
+        footer = tk.Frame(self.open_screen, background=theme.SURFACE, height=68)
         footer.pack(side="bottom", fill="x")
         footer.pack_propagate(False)
         tk.Frame(footer, background=theme.EDGE, height=1).pack(fill="x")
         self.open_status = ttk.Label(footer, text="", style="SurfaceMuted.TLabel")
         self.open_status.pack(side="left", padx=24)
-        self.analyse_button = ttk.Button(
-            footer, text="ABRIR PÁGINAS", style="Cut.TButton", command=self._on_analyse)
-        self.analyse_button.pack(side="right", padx=24, pady=12)
+        self.analyse_button = theme.RoundedButton(
+            footer, "ABRIR PÁGINAS", command=self._on_analyse,
+            kind="primary", fonts=self.fonts, background=theme.SURFACE, min_width=190)
+        self.analyse_button.pack(side="right", padx=24, pady=13)
 
         outer = ttk.Frame(self.open_screen, style="Paper.TFrame")
         outer.place(relx=0.5, rely=0.5, anchor="center")
@@ -391,9 +445,9 @@ class SlidecutApp:
         self.drop_label.pack()
         ttk.Label(self.drop_zone, text="pptx · docx · pdf e outros",
                   style="SunkFaint.TLabel").pack(pady=(6, 12))
-        self.pick_input_button = ttk.Button(
-            self.drop_zone, text="Procurar no computador", style="Quiet.TButton",
-            command=self._pick_input,
+        self.pick_input_button = theme.RoundedButton(
+            self.drop_zone, "Procurar no computador", command=self._pick_input,
+            kind="quiet", fonts=self.fonts, background=theme.SURFACE_SUNK,
         )
         self.pick_input_button.pack()
 
@@ -407,8 +461,9 @@ class SlidecutApp:
         self.outdir_var = tk.StringVar()
         ttk.Entry(outrow, textvariable=self.outdir_var, width=48).pack(
             side="left", fill="x", expand=True)
-        self.pick_outdir_button = ttk.Button(
-            outrow, text="Escolher...", style="Quiet.TButton", command=self._pick_outdir)
+        self.pick_outdir_button = theme.RoundedButton(
+            outrow, "Escolher...", command=self._pick_outdir,
+            kind="quiet", fonts=self.fonts, background=theme.SURFACE)
         self.pick_outdir_button.pack(side="left", padx=(10, 0))
 
         self.ascii_var = tk.BooleanVar(value=False)
@@ -517,53 +572,19 @@ class SlidecutApp:
     def _build_sheet_screen(self) -> None:
         self.sheet_screen = ttk.Frame(self.root, style="Paper.TFrame")
 
-        toolbar = tk.Frame(self.sheet_screen, background=theme.SURFACE, height=68)
-        toolbar.pack(fill="x")
-        toolbar.pack_propagate(False)
-
-        left = ttk.Frame(toolbar, style="Surface.TFrame")
-        left.pack(side="left", padx=24, pady=12)
-        ttk.Label(left, text="Marque as páginas onde cada capítulo começa",
-                  style="Surface.TLabel").pack(anchor="w")
-        ttk.Label(left, text="Cada marca abre um arquivo novo.",
-                  style="SurfaceFaint.TLabel").pack(anchor="w")
-
-        self.summary_label = ttk.Label(toolbar, text="", style="SurfaceMuted.TLabel")
-        self.summary_label.pack(side="right", padx=24)
-
-        actions = ttk.Frame(toolbar, style="Surface.TFrame")
-        actions.pack(side="left", padx=20)
-        self.suggest_button = ttk.Button(
-            actions, text="Usar sugestão por cor", style="Quiet.TButton",
-            command=self._apply_suggestion)
-        self.suggest_button.pack(side="left")
-        self.clear_button = ttk.Button(
-            actions, text="Limpar marcas", style="Quiet.TButton", command=self._clear_selection)
-        self.clear_button.pack(side="left", padx=8)
-        self.back_button = ttk.Button(
-            actions, text="Trocar arquivo", style="Quiet.TButton", command=self._show_open)
-        self.back_button.pack(side="left")
-
+        self._build_sheet_toolbar()
         tk.Frame(self.sheet_screen, background=theme.EDGE, height=1).pack(fill="x")
-
-        footer = tk.Frame(self.sheet_screen, background=theme.SURFACE, height=64)
-        footer.pack(side="bottom", fill="x")
-        footer.pack_propagate(False)
-        tk.Frame(footer, background=theme.EDGE, height=1).pack(fill="x")
-        self.sheet_status = ttk.Label(footer, text="", style="SurfaceMuted.TLabel")
-        self.sheet_status.pack(side="left", padx=24)
-        self.cut_button = ttk.Button(
-            footer, text="GERAR OS CORTES", style="Cut.TButton", command=self._on_cut)
-        self.cut_button.pack(side="right", padx=24, pady=12)
-        self.open_button = ttk.Button(
-            footer, text="Abrir pasta", style="Quiet.TButton",
-            command=self._on_open_outdir, state="disabled")
-        self.open_button.pack(side="right", pady=12)
+        self._build_sheet_footer()
 
         body = ttk.Frame(self.sheet_screen, style="Paper.TFrame")
         body.pack(fill="both", expand=True)
-        self.canvas = tk.Canvas(body, background=theme.PAPER, highlightthickness=0, bd=0)
-        scrollbar = ttk.Scrollbar(body, orient="vertical", command=self.canvas.yview)
+
+        self._build_inspector(body)
+
+        grid_area = ttk.Frame(body, style="Paper.TFrame")
+        grid_area.pack(side="left", fill="both", expand=True)
+        self.canvas = tk.Canvas(grid_area, background=theme.PAPER, highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(grid_area, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
@@ -575,6 +596,160 @@ class SlidecutApp:
             "<Configure>",
             lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _build_sheet_toolbar(self) -> None:
+        """Duas faixas: o que fazer com as marcas, e como nomear o que sai."""
+        toolbar = tk.Frame(self.sheet_screen, background=theme.SURFACE)
+        toolbar.pack(fill="x")
+
+        row = tk.Frame(toolbar, background=theme.SURFACE)
+        row.pack(fill="x", padx=24, pady=(14, 8))
+
+        left = tk.Frame(row, background=theme.SURFACE)
+        left.pack(side="left")
+        ttk.Label(left, text="Marque onde cada capítulo começa",
+                  style="Surface.TLabel").pack(anchor="w")
+        ttk.Label(left, text="Clique numa página para vê-la de perto. Dois cliques abrem maior.",
+                  style="SurfaceFaint.TLabel").pack(anchor="w")
+
+        # As acoes vao a direita e o resumo desce para a faixa de baixo: quando
+        # os dois dividiam esta linha, o botao de limpar ficava cortado nas
+        # janelas mais estreitas.
+        actions = tk.Frame(row, background=theme.SURFACE)
+        actions.pack(side="right")
+        self.suggest_button = theme.RoundedButton(
+            actions, "Marcar pela cor", command=self._apply_suggestion,
+            kind="quiet", fonts=self.fonts, background=theme.SURFACE)
+        self.suggest_button.pack(side="left")
+        self.matrix_button = theme.RoundedButton(
+            actions, "Slide matriz", command=self._use_focused_as_matrix,
+            kind="matrix", fonts=self.fonts, background=theme.SURFACE)
+        self.matrix_button.pack(side="left", padx=8)
+        self.clear_button = theme.RoundedButton(
+            actions, "✕  Limpar marcações", command=self._clear_selection,
+            kind="danger", fonts=self.fonts, background=theme.SURFACE)
+        self.clear_button.pack(side="left")
+
+        naming = tk.Frame(toolbar, background=theme.SURFACE_SUNK)
+        naming.pack(fill="x")
+        tk.Frame(naming, background=theme.EDGE_SOFT, height=1).pack(fill="x")
+        inner = tk.Frame(naming, background=theme.SURFACE_SUNK)
+        inner.pack(fill="x", padx=24, pady=10)
+
+        ttk.Label(inner, text="N O M E   D O S   A R Q U I V O S",
+                  style="SunkSection.TLabel").pack(side="left", padx=(0, 14))
+        ttk.Label(inner, text="Antes:", style="SunkMuted.TLabel").pack(side="left")
+        ttk.Entry(inner, textvariable=self.prefix_var, width=16).pack(side="left", padx=(6, 14))
+        ttk.Label(inner, text="Depois:", style="SunkMuted.TLabel").pack(side="left")
+        ttk.Entry(inner, textvariable=self.suffix_var, width=16).pack(side="left", padx=(6, 0))
+        ttk.Label(inner, text="Entram em todos os arquivos gerados.",
+                  style="SunkFaint.TLabel").pack(side="left", padx=(14, 0))
+        self.summary_label = ttk.Label(inner, text="", style="SunkMuted.TLabel")
+        self.summary_label.pack(side="right")
+
+        for var in (self.prefix_var, self.suffix_var):
+            var.trace_add("write", lambda *_a: self._refresh_name_previews())
+
+    def _build_inspector(self, parent: tk.Widget) -> None:
+        """Painel lateral com a pagina aberta em tamanho grande.
+
+        E um painel encaixado, nao uma janela: o pedido foi ver de perto sem
+        sair da tela, e uma caixa flutuante taparia justamente a grade que o
+        usuario esta comparando. Aqui a pagina grande fica lado a lado com as
+        miniaturas, que e o que a tarefa pede — comparar tons.
+        """
+        self.inspector = tk.Frame(parent, background=theme.SURFACE, width=INSPECTOR_WIDTH)
+        self.inspector.pack_propagate(False)
+
+        tk.Frame(self.inspector, background=theme.EDGE, width=1).pack(side="left", fill="y")
+        inner = tk.Frame(self.inspector, background=theme.SURFACE)
+        inner.pack(fill="both", expand=True, padx=20, pady=16)
+
+        head = tk.Frame(inner, background=theme.SURFACE)
+        head.pack(fill="x")
+        self.inspect_title = tk.Label(
+            head, text="", font=self.fonts.display, background=theme.SURFACE,
+            foreground=theme.INK, anchor="w")
+        self.inspect_title.pack(side="left")
+        tk.Label(head, text="✕", font=self.fonts.body_bold, background=theme.SURFACE,
+                 foreground=theme.SLATE_LIGHT, cursor="hand2", padx=6
+                 ).pack(side="right")
+        head.winfo_children()[-1].bind("<Button-1>", lambda _e: self._close_inspector())
+
+        self.inspect_caption = tk.Label(
+            inner, text="", font=self.fonts.small, background=theme.SURFACE,
+            foreground=theme.SLATE, wraplength=INSPECTOR_WIDTH - 60, justify="left", anchor="w")
+        self.inspect_caption.pack(fill="x", pady=(2, 12))
+
+        frame = tk.Frame(inner, background=theme.EDGE)
+        frame.pack()
+        self.inspect_image_label = tk.Label(frame, background=theme.SURFACE_SUNK, bd=0)
+        self.inspect_image_label.pack(padx=1, pady=1)
+
+        # A cor lida da pagina e o que decide o corte automatico. Mostrar o
+        # quadradinho ao lado do hexadecimal deixa a conta do programa visivel:
+        # da para comparar dois slides sem adivinhar por que um virou divisor.
+        swatch_row = tk.Frame(inner, background=theme.SURFACE)
+        swatch_row.pack(fill="x", pady=(14, 0))
+        self.inspect_swatch = tk.Frame(swatch_row, width=26, height=26,
+                                       background=theme.EDGE_SOFT,
+                                       highlightthickness=1, highlightbackground=theme.EDGE)
+        self.inspect_swatch.pack(side="left")
+        self.inspect_swatch.pack_propagate(False)
+        column = tk.Frame(swatch_row, background=theme.SURFACE)
+        column.pack(side="left", padx=(10, 0))
+        self.inspect_colour = tk.Label(column, text="", font=self.fonts.code,
+                                       background=theme.SURFACE, foreground=theme.INK, anchor="w")
+        self.inspect_colour.pack(anchor="w")
+        tk.Label(column, text="cor dominante desta página", font=self.fonts.tiny,
+                 background=theme.SURFACE, foreground=theme.SLATE_LIGHT, anchor="w").pack(anchor="w")
+
+        self.inspect_badge = tk.Label(inner, text="", font=self.fonts.section,
+                                      background=theme.SURFACE, foreground=theme.MATRIX_DARK,
+                                      anchor="w")
+        self.inspect_badge.pack(fill="x", pady=(10, 0))
+
+        actions = tk.Frame(inner, background=theme.SURFACE)
+        actions.pack(fill="x", pady=(14, 0))
+        self.inspect_cut_button = theme.RoundedButton(
+            actions, "Marcar corte aqui", command=self._toggle_focused_cut,
+            kind="quiet", fonts=self.fonts, background=theme.SURFACE,
+            min_width=INSPECTOR_WIDTH - 60)
+        self.inspect_cut_button.pack(fill="x")
+        self.inspect_keep_button = theme.RoundedButton(
+            actions, "Tirar do corte", command=self._toggle_focused_keep,
+            kind="quiet", fonts=self.fonts, background=theme.SURFACE,
+            min_width=INSPECTOR_WIDTH - 60)
+        self.inspect_keep_button.pack(fill="x", pady=(8, 0))
+        self.inspect_matrix_button = theme.RoundedButton(
+            actions, "Usar como slide matriz", command=self._use_focused_as_matrix,
+            kind="matrix", fonts=self.fonts, background=theme.SURFACE,
+            min_width=INSPECTOR_WIDTH - 60)
+        self.inspect_matrix_button.pack(fill="x", pady=(8, 0))
+
+    def _build_sheet_footer(self) -> None:
+        footer = tk.Frame(self.sheet_screen, background=theme.SURFACE, height=68)
+        footer.pack(side="bottom", fill="x")
+        footer.pack_propagate(False)
+        tk.Frame(footer, background=theme.EDGE, height=1).pack(fill="x")
+
+        self.back_button = theme.RoundedButton(
+            footer, "←  Voltar ao início", command=self._show_open,
+            kind="ghost", fonts=self.fonts, background=theme.SURFACE)
+        self.back_button.pack(side="left", padx=24, pady=13)
+
+        self.sheet_status = ttk.Label(footer, text="", style="SurfaceMuted.TLabel")
+        self.sheet_status.pack(side="left")
+
+        self.cut_button = theme.RoundedButton(
+            footer, "GERAR OS CORTES", command=self._on_cut,
+            kind="primary", fonts=self.fonts, background=theme.SURFACE, min_width=190)
+        self.cut_button.pack(side="right", padx=24, pady=13)
+        self.open_button = theme.RoundedButton(
+            footer, "Abrir pasta", command=self._on_open_outdir,
+            kind="quiet", fonts=self.fonts, background=theme.SURFACE)
+        self.open_button.configure(state="disabled")
+        self.open_button.pack(side="right", pady=13)
 
         self.sheet_progress = ttk.Progressbar(
             footer, mode="indeterminate", style="Cut.Horizontal.TProgressbar", length=160)
@@ -595,14 +770,24 @@ class SlidecutApp:
             style="PaperFaint.TLabel",
         ).pack(anchor="w", pady=(2, 0))
 
-        top = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 8))
-        top.pack(fill="x")
-        ttk.Button(top, text="Adicionar arquivos...", style="Quiet.TButton",
-                  command=self._batch_add_files).pack(side="left")
-        ttk.Button(top, text="Remover selecionado(s)", style="Quiet.TButton",
-                  command=self._batch_remove_selected).pack(side="left", padx=8)
-        ttk.Button(top, text="Limpar lista", style="Quiet.TButton",
-                  command=self._batch_clear).pack(side="left", padx=8)
+        top = tk.Frame(self.batch_screen, background=theme.PAPER)
+        top.pack(fill="x", padx=24, pady=8)
+        theme.RoundedButton(top, "+  Adicionar arquivos", command=self._batch_add_files,
+                            kind="quiet", fonts=self.fonts, background=theme.PAPER
+                            ).pack(side="left")
+        theme.RoundedButton(top, "Remover selecionado(s)", command=self._batch_remove_selected,
+                            kind="danger", fonts=self.fonts, background=theme.PAPER
+                            ).pack(side="left", padx=8)
+        theme.RoundedButton(top, "Limpar lista", command=self._batch_clear,
+                            kind="ghost", fonts=self.fonts, background=theme.PAPER
+                            ).pack(side="left")
+
+        naming = tk.Frame(self.batch_screen, background=theme.PAPER)
+        naming.pack(fill="x", padx=24, pady=(2, 6))
+        ttk.Label(naming, text="Antes do nome:", style="PaperMuted.TLabel").pack(side="left")
+        ttk.Entry(naming, textvariable=self.prefix_var, width=16).pack(side="left", padx=(6, 14))
+        ttk.Label(naming, text="Depois:", style="PaperMuted.TLabel").pack(side="left")
+        ttk.Entry(naming, textvariable=self.suffix_var, width=16).pack(side="left", padx=(6, 0))
 
         self.batch_mode_var = tk.StringVar(value="cortar")
         modes = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 4))
@@ -639,17 +824,19 @@ class SlidecutApp:
         self.batch_listbox.bind("<Delete>", lambda _e: self._batch_remove_selected())
         self.batch_listbox.bind("<<ListboxSelect>>", lambda _e: self._batch_update_status())
 
-        footer = tk.Frame(self.batch_screen, background=theme.SURFACE, height=64)
+        footer = tk.Frame(self.batch_screen, background=theme.SURFACE, height=68)
         footer.pack(side="bottom", fill="x")
         footer.pack_propagate(False)
         tk.Frame(footer, background=theme.EDGE, height=1).pack(fill="x")
-        ttk.Button(footer, text="Voltar", style="Quiet.TButton",
-                  command=self._show_open).pack(side="left", padx=24, pady=12)
+        theme.RoundedButton(footer, "←  Voltar ao início", command=self._show_open,
+                            kind="ghost", fonts=self.fonts, background=theme.SURFACE
+                            ).pack(side="left", padx=24, pady=13)
         self.batch_status = ttk.Label(footer, text="", style="SurfaceMuted.TLabel")
         self.batch_status.pack(side="left", padx=(0, 24))
-        self.batch_run_button = ttk.Button(
-            footer, text="PROCESSAR TODOS", style="Cut.TButton", command=self._on_batch_run)
-        self.batch_run_button.pack(side="right", padx=24, pady=12)
+        self.batch_run_button = theme.RoundedButton(
+            footer, "PROCESSAR TODOS", command=self._on_batch_run,
+            kind="primary", fonts=self.fonts, background=theme.SURFACE, min_width=190)
+        self.batch_run_button.pack(side="right", padx=24, pady=13)
         self.batch_progress = ttk.Progressbar(
             footer, mode="determinate", style="Cut.Horizontal.TProgressbar", length=200)
 
@@ -717,10 +904,14 @@ class SlidecutApp:
         self.batch_progress.configure(maximum=len(files), value=0)
         self.batch_progress.pack(side="right", padx=16)
         threading.Thread(
-            target=self._run_batch, args=(files, outdir, mode, per_sheet), daemon=True
+            target=self._run_batch,
+            args=(files, outdir, mode, per_sheet,
+                  self.prefix_var.get(), self.suffix_var.get()),
+            daemon=True,
         ).start()
 
-    def _run_batch(self, files: list[Path], outdir: str, mode: str, per_sheet: int) -> None:
+    def _run_batch(self, files: list[Path], outdir: str, mode: str, per_sheet: int,
+                   prefix: str = "", suffix: str = "") -> None:
         def progress(msg: str) -> None:
             self._events.put(("batch_status", msg))
 
@@ -735,7 +926,8 @@ class SlidecutApp:
                                              on_progress=progress, on_item=item)
             else:
                 results = core.process_batch(files, outdir, per_sheet=per_sheet,
-                                             on_progress=progress, on_item=item)
+                                             on_progress=progress, on_item=item,
+                                             prefix=prefix, suffix=suffix)
             self._events.put(("batch_done", results))
         except Exception as exc:
             self._events.put(("error", str(exc)))
@@ -876,6 +1068,15 @@ class SlidecutApp:
                 WINDOW_TITLE, "Marque pelo menos uma página para começar um capítulo.")
             return
 
+        excluded = {i for i, var in self.keep_vars.items() if not var.get()}
+        if excluded and len(excluded) == len(self.cards):
+            messagebox.showwarning(
+                WINDOW_TITLE,
+                "Todas as páginas estão fora do corte. Marque pelo menos uma "
+                "para haver o que gravar.",
+            )
+            return
+
         self.open_button.configure(state="disabled")
         self._set_busy(True)
         self.sheet_progress.pack(side="right", padx=16)
@@ -884,16 +1085,18 @@ class SlidecutApp:
         threading.Thread(
             target=self._run_cut,
             args=(self.document, dividers, self.outdir_var.get() or None,
-                  self.ascii_var.get(), custom_titles, self.per_sheet_var.get()),
+                  self.ascii_var.get(), custom_titles, self.per_sheet_var.get(),
+                  self.prefix_var.get(), self.suffix_var.get(), excluded),
             daemon=True,
         ).start()
 
     def _run_cut(self, document, dividers, outdir, ascii_only, custom_titles,
-                 per_sheet=1) -> None:
+                 per_sheet=1, prefix="", suffix="", excluded=None) -> None:
         try:
             result = core.cut_at(
                 document, dividers, outdir=outdir, ascii_only=ascii_only,
                 custom_titles=custom_titles, per_sheet=per_sheet,
+                prefix=prefix, suffix=suffix, excluded_pages=excluded,
                 on_progress=lambda msg: self._events.put(("status", msg)),
             )
             self._events.put(("cut", result))
@@ -909,11 +1112,16 @@ class SlidecutApp:
         for child in self.grid_frame.winfo_children():
             child.destroy()
         self.checkbox_vars.clear()
+        self.keep_vars.clear()
         self.title_vars.clear()
         self.cards.clear()
         self.chapter_bands.clear()
         self._placement.clear()
         self.thumbnail_images.clear()
+        self._matrix_page = None
+        self._focused = None
+        self._inspect_image = None
+        self.inspector.pack_forget()
 
     def _add_card(self, thumb: preview.Thumbnail) -> None:
         index = thumb.index
@@ -939,56 +1147,132 @@ class SlidecutApp:
 
         holder = tk.Frame(content, background=theme.SURFACE)
         holder.pack()
-        tk.Label(holder, image=image, background=theme.SURFACE, bd=0).pack()
+        thumb_label = tk.Label(holder, image=image, background=theme.SURFACE, bd=0)
+        thumb_label.pack()
         number = tk.Label(holder, text=f"{index + 1:03d}", font=self.fonts.number,
                           background=theme.INK, foreground=theme.SURFACE, padx=5, pady=1)
         number.place(x=0, y=0)
 
+        # Marca de corte com nome escrito, no lugar do clique-em-qualquer-lugar
+        # que existia antes: quem ligou por engano nao adivinhava como desligar.
+        cut_tag = tk.Label(content, text=CUT_OFF_LABEL, font=self.fonts.section,
+                           background=theme.SURFACE_SUNK, foreground=theme.SLATE,
+                           cursor="hand2", pady=5)
+        cut_tag.pack(fill="x", pady=(10, 0))
+
+        keep = tk.BooleanVar(value=True)
+        keep_row = tk.Frame(content, background=theme.SURFACE)
+        keep_row.pack(fill="x", pady=(6, 0))
+        keep_box = tk.Checkbutton(
+            keep_row, text="entra no corte", variable=keep, font=self.fonts.tiny,
+            background=theme.SURFACE, activebackground=theme.SURFACE,
+            foreground=theme.KEEP, activeforeground=theme.KEEP, selectcolor=theme.SURFACE,
+            bd=0, highlightthickness=0, padx=0, cursor="hand2", anchor="w",
+        )
+        keep_box.pack(anchor="w")
+
         caption = tk.Label(content, text=thumb.caption, font=self.fonts.small,
                            background=theme.SURFACE, foreground=theme.SLATE_LIGHT,
                            wraplength=THUMBNAIL_WIDTH, justify="left", anchor="w")
-        caption.pack(fill="x", pady=(10, 0))
+        caption.pack(fill="x", pady=(6, 0))
 
-        name_row = tk.Frame(content, background=theme.SURFACE, height=44)
-        name_row.pack(fill="x", pady=(8, 0))
+        name_row = tk.Frame(content, background=theme.SURFACE, height=NAME_ROW_HEIGHT)
+        name_row.pack(fill="x", pady=(6, 0))
         name_row.pack_propagate(False)
         name_label = tk.Label(name_row, text="NOME DO ARQUIVO", font=self.fonts.section,
                               background=theme.SURFACE, foreground=theme.CUT, anchor="w")
         title_var = tk.StringVar(value=thumb.title)
         entry = ttk.Entry(name_row, textvariable=title_var, style="Name.TEntry",
                           font=self.fonts.small)
+        name_preview = tk.Label(name_row, text="", font=self.fonts.tiny,
+                                background=theme.SURFACE, foreground=theme.SLATE_LIGHT,
+                                anchor="w", wraplength=THUMBNAIL_WIDTH, justify="left")
 
         checked = tk.BooleanVar(value=index in self._suggested)
         self.checkbox_vars[index] = checked
+        self.keep_vars[index] = keep
         self.title_vars[index] = title_var
         self.cards[index] = {
             "shell": shell, "body": body, "rail": rail, "number": number,
             "caption": caption, "name_label": name_label, "entry": entry,
+            "cut_tag": cut_tag, "keep_box": keep_box, "thumb": thumb_label,
+            "name_preview": name_preview, "fallback": thumb.title,
         }
 
-        for widget in (body, content, holder, caption):
-            widget.bind("<Button-1>", lambda _e, i=index: self._toggle(i))
-        holder.winfo_children()[0].bind("<Button-1>", lambda _e, i=index: self._toggle(i))
+        # Um clique abre a pagina no painel; dois cliques renderizam maior. A
+        # marca de corte tem controle proprio, entao clicar para olhar nunca
+        # mexe no que vai ser gerado.
+        for widget in (body, content, holder, caption, thumb_label, number):
+            widget.bind("<Button-1>", lambda _e, i=index: self._focus_page(i))
+            widget.bind("<Double-Button-1>", lambda _e, i=index: self._focus_page(i, big=True))
+        cut_tag.bind("<Button-1>", lambda _e, i=index: self._toggle(i))
 
         checked.trace_add("write", lambda *_a, i=index: self._on_check_changed(i))
+        keep.trace_add("write", lambda *_a, i=index: self._on_keep_changed(i))
+        title_var.trace_add("write", lambda *_a, i=index: self._refresh_name_preview(i))
         self._paint_card(index)
 
     def _paint_card(self, index: int) -> None:
         """Marcado muda so a cor, nunca o tamanho: a grade nao pode saltar."""
         parts = self.cards[index]
         marked = self.checkbox_vars[index].get()
+        kept = self.keep_vars[index].get()
+        focused = self._focused == index
+        is_matrix = self._matrix_page == index
 
-        parts["shell"].configure(background=theme.CUT if marked else theme.EDGE)
+        if focused:
+            border = theme.FOCUS
+        elif is_matrix:
+            border = theme.MATRIX
+        elif marked:
+            border = theme.CUT
+        else:
+            border = theme.EDGE
+        parts["shell"].configure(background=border)
+
         parts["rail"].configure(background=theme.CUT if marked else theme.SURFACE)
-        parts["number"].configure(background=theme.CUT if marked else theme.INK)
-        parts["caption"].configure(foreground=theme.INK if marked else theme.SLATE_LIGHT)
+        parts["number"].configure(
+            background=theme.CUT if marked else (theme.DROP if not kept else theme.INK))
+        parts["caption"].configure(
+            foreground=theme.INK if marked else (theme.DROP if not kept else theme.SLATE_LIGHT))
+
+        parts["cut_tag"].configure(
+            text=CUT_ON_LABEL if marked else CUT_OFF_LABEL,
+            background=theme.CUT if marked else theme.SURFACE_SUNK,
+            foreground=theme.SURFACE if marked else theme.SLATE,
+        )
+        parts["keep_box"].configure(
+            text="entra no corte" if kept else "fora do corte",
+            foreground=theme.KEEP if kept else theme.DANGER_DARK,
+            activeforeground=theme.KEEP if kept else theme.DANGER_DARK,
+        )
 
         if marked:
             parts["name_label"].pack(fill="x")
             parts["entry"].pack(fill="x", pady=(2, 0))
+            parts["name_preview"].pack(fill="x")
+            self._refresh_name_preview(index)
         else:
             parts["name_label"].pack_forget()
             parts["entry"].pack_forget()
+            parts["name_preview"].pack_forget()
+
+    def _refresh_name_preview(self, index: int) -> None:
+        parts = self.cards.get(index)
+        if parts is None or not self.checkbox_vars[index].get():
+            return
+        marks = sorted(i for i, v in self.checkbox_vars.items() if v.get())
+        number = marks.index(index) + 1 if index in marks else 1
+        if marks and marks[0] > 0:
+            number += 1  # a abertura ocupa o numero 1
+        parts["name_preview"].configure(text=filename_preview(
+            number, self.title_vars[index].get(),
+            self.prefix_var.get(), self.suffix_var.get(), parts["fallback"],
+        ))
+
+    def _refresh_name_previews(self) -> None:
+        for index in list(self.cards):
+            self._refresh_name_preview(index)
 
     def _toggle(self, index: int) -> None:
         var = self.checkbox_vars.get(index)
@@ -998,7 +1282,125 @@ class SlidecutApp:
     def _on_check_changed(self, index: int) -> None:
         self._paint_card(index)
         self._refresh_summary()
+        self._refresh_name_previews()
         self._schedule_reflow()
+        if self._focused == index:
+            self._refresh_inspector_actions()
+
+    def _on_keep_changed(self, index: int) -> None:
+        self._paint_card(index)
+        self._refresh_summary()
+        if self._focused == index:
+            self._refresh_inspector_actions()
+
+    # -------------------------------------------------- painel de inspecao
+    def _focus_page(self, index: int, big: bool = False) -> None:
+        """Abre a pagina no painel lateral. Dois cliques pedem o render maior."""
+        if self.document is None or index not in self.cards:
+            return
+
+        previous, self._focused = self._focused, index
+        if previous is not None and previous in self.cards:
+            self._paint_card(previous)
+        self._paint_card(index)
+
+        # winfo_manager() e nao winfo_ismapped(): a pergunta e "ja esta
+        # encaixado?", nao "ja esta pintado?" — a segunda responde nao enquanto
+        # a janela nao terminou de aparecer, e o painel abriria duas vezes.
+        if not self.inspector.winfo_manager():
+            self.inspector.pack(side="right", fill="y")
+            # A grade perdeu largura: sem recontar as colunas, os cartoes ficam
+            # escondidos atras do painel em vez de reencaixarem.
+            self._schedule_reflow()
+
+        width = preview.INSPECT_WIDTH if big else INSPECT_DOCKED_WIDTH
+        try:
+            page = preview.render_page(self.document.pdf_path, index, width=width)
+            rgb = analyze.page_color(self.document.pdf_path, index)
+        except (OSError, IndexError, SlidecutError):
+            # Pagina que nao renderiza nao pode derrubar a tela inteira: a
+            # grade continua utilizavel e o usuario segue marcando cortes.
+            self.inspect_caption.configure(text="Não consegui abrir esta página de perto.")
+            return
+
+        self._inspect_image = tk.PhotoImage(data=page.png, master=self.root)
+        self.inspect_image_label.configure(image=self._inspect_image)
+        self.inspect_title.configure(text=inspector_label(index, len(self.cards)))
+        self.inspect_caption.configure(text=page.caption)
+        self.inspect_swatch.configure(background=colour_hex(rgb))
+        self.inspect_colour.configure(text=colour_hex(rgb))
+        self._refresh_inspector_actions()
+
+    def _refresh_inspector_actions(self) -> None:
+        index = self._focused
+        if index is None:
+            return
+        marked = self.checkbox_vars[index].get()
+        kept = self.keep_vars[index].get()
+
+        self.inspect_cut_button.configure(
+            text="Tirar a marca de corte" if marked else "Marcar corte aqui")
+        self.inspect_keep_button.configure(
+            text="Trazer de volta para o corte" if not kept else "Tirar esta página do corte")
+        self.inspect_badge.configure(
+            text="SLIDE MATRIZ — a cor desta página define o corte"
+            if self._matrix_page == index else ""
+        )
+
+    def _close_inspector(self) -> None:
+        previous, self._focused = self._focused, None
+        self.inspector.pack_forget()
+        if previous is not None and previous in self.cards:
+            self._paint_card(previous)
+        self._schedule_reflow()
+
+    def _toggle_focused_cut(self) -> None:
+        if self._focused is not None:
+            self._toggle(self._focused)
+
+    def _toggle_focused_keep(self) -> None:
+        if self._focused is None:
+            return
+        var = self.keep_vars[self._focused]
+        var.set(not var.get())
+
+    def _use_focused_as_matrix(self) -> None:
+        """Reaplica a deteccao usando a cor da pagina aberta no painel.
+
+        As marcas anteriores sao substituidas: escolher uma matriz e dizer "o
+        padrao e este", e manter marcas do palpite antigo misturaria dois
+        criterios sem o usuario perceber.
+        """
+        if self.document is None:
+            return
+        if self._focused is None:
+            messagebox.showinfo(
+                WINDOW_TITLE,
+                "Clique primeiro na página que serve de modelo — a que tem a cor "
+                "que separa os capítulos. Depois use este botão.",
+            )
+            return
+
+        index = self._focused
+        try:
+            rgb = analyze.page_color(self.document.pdf_path, index)
+            encontrados = analyze.find_dividers(self.document.pdf_path, color=rgb)
+        except (OSError, IndexError, SlidecutError) as exc:
+            messagebox.showerror(WINDOW_TITLE, f"Não consegui ler a cor desta página.\n\n{exc}")
+            return
+
+        self._matrix_page = index
+        alvo = set(encontrados) or {index}
+        for page, var in self.checkbox_vars.items():
+            var.set(page in alvo)
+
+        for page in list(self.cards):
+            self._paint_card(page)
+        self._refresh_inspector_actions()
+        self.sheet_status.configure(
+            text=f"Slide matriz: página {index + 1} ({colour_hex(rgb)}) · "
+                 f"{len(alvo)} corte(s) marcado(s)"
+        )
 
     def _schedule_reflow(self) -> None:
         if self._reflow_job is not None:
@@ -1088,12 +1490,26 @@ class SlidecutApp:
             var.set(index in suggested)
 
     def _clear_selection(self) -> None:
+        """Tira tudo: marcas de corte, paginas fora do corte e o slide matriz.
+
+        Um botao chamado "limpar marcacoes" que deixasse metade das marcas de pe
+        seria pior do que nao existir — a saida tem de voltar ao estado inicial.
+        """
+        self._matrix_page = None
         for var in self.checkbox_vars.values():
             var.set(False)
+        for var in self.keep_vars.values():
+            var.set(True)
+        for index in list(self.cards):
+            self._paint_card(index)
+        self._refresh_inspector_actions()
+        self.sheet_status.configure(text="Marcações apagadas.")
 
     def _refresh_summary(self) -> None:
         selected = sum(1 for var in self.checkbox_vars.values() if var.get())
-        self.summary_label.configure(text=selection_summary(selected, len(self.checkbox_vars)))
+        excluded = sum(1 for var in self.keep_vars.values() if not var.get())
+        self.summary_label.configure(
+            text=selection_summary(selected, len(self.checkbox_vars), excluded))
 
     # ---------------------------------------------------------- plumbing
     def _set_busy(self, busy: bool) -> None:
@@ -1104,6 +1520,8 @@ class SlidecutApp:
             self.analyse_button, self.cut_button, self.back_button,
             self.pick_input_button, self.pick_outdir_button,
             self.suggest_button, self.clear_button, self.batch_run_button,
+            self.matrix_button, self.inspect_cut_button, self.inspect_keep_button,
+            self.inspect_matrix_button,
         ):
             widget.configure(state=state)
 

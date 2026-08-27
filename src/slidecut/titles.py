@@ -57,6 +57,18 @@ def safe_filename(title: str, ascii_only: bool = False) -> str:
     return name[:MAX_FILENAME_LENGTH].strip()
 
 
+def decorate(title: str, prefix: str = "", suffix: str = "", ascii_only: bool = False) -> str:
+    """Envolve o titulo com o prefixo e o sufixo escolhidos pelo usuario.
+
+    Prefixo e sufixo sao digitados, entao passam pela mesma limpeza do titulo:
+    uma barra ou dois-pontos ali dentro quebraria o nome do arquivo. O limite de
+    tamanho vale para o conjunto, nao para cada pedaco — o nome final e que
+    precisa caber.
+    """
+    joined = " ".join(part.strip() for part in (prefix, title, suffix) if part.strip())
+    return safe_filename(joined, ascii_only)
+
+
 def page_titles(pdf_path: str | Path, indices: list[int], ascii_only: bool = False) -> list[str]:
     """Titulo de cada pagina indicada, ja pronto para virar nome de arquivo."""
     titles: list[str] = []

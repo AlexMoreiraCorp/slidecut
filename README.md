@@ -92,9 +92,26 @@ Fluxo em duas telas:
 
 Cada página marcada abre um capítulo novo e ganha um campo de nome editável, já preenchido com
 o texto da própria página. Útil quando o corte cai numa página de conteúdo, cujo texto corrido
-daria um nome ruim.
+daria um nome ruim. Abaixo do campo aparece o nome exato que o arquivo vai receber.
 
-Botões `Usar sugestão por cor` e `Limpar marcas` refazem a seleção inteira de uma vez.
+### Marcar, ver e nomear
+
+| O que | Como |
+|---|---|
+| **Marcar ou tirar um corte** | Clicar na faixa `marcar corte aqui` / `CORTA AQUI` do cartão |
+| **Ver uma página de perto** | Clicar na miniatura; ela abre no painel lateral, sem sair da janela |
+| **Ver ainda maior** | Dois cliques na miniatura |
+| **Tirar uma página do corte** | Desmarcar `entra no corte`. A página continua no arquivo de origem — só não entra no capítulo gerado |
+| **Refazer tudo** | `Marcar pela cor` (volta à sugestão automática) ou `✕ Limpar marcações` (apaga tudo) |
+
+**Prefixo e sufixo.** Os campos `Antes` e `Depois` entram no nome de **todos** os arquivos
+gerados, inclusive nos que você renomeou à mão. Serve para carimbar a turma, a aula ou a
+revisão de uma vez só, em vez de repetir em cada capítulo.
+
+**Slide matriz.** Quando o deck tem mais de um tom forte, a detecção automática escolhe o que
+mais se repete — que nem sempre é o que separa os capítulos. Abra o slide que você reconhece
+como divisor e use `Usar como slide matriz`: a cor dele passa a definir o corte do documento
+inteiro. O painel mostra a cor lida de cada página, então dá para comparar antes de decidir.
 
 ## Gerar o executável e o instalador
 

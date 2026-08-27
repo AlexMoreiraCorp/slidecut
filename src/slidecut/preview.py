@@ -17,6 +17,9 @@ from .document import open_pdf
 from .titles import clean_title, safe_filename
 
 DEFAULT_WIDTH = 170
+INSPECT_WIDTH = 420
+"""Largura da pagina no painel de inspecao: grande o bastante para ler o slide
+sem abrir outra janela."""
 CAPTION_LIMIT = 42
 BLANK_CAPTION = "(pagina sem texto)"
 
@@ -44,6 +47,37 @@ def page_caption(raw_text: str, limit: int = CAPTION_LIMIT) -> str:
     return text[: limit - 1].rstrip() + "…"
 
 
+def _thumbnail_of(page: pymupdf.Page, index: int, width: int) -> Thumbnail:
+    scale = width / page.rect.width if page.rect.width else 1.0
+    pixmap = page.get_pixmap(
+        matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False
+    )
+    text = page.get_text()
+    return Thumbnail(
+        index=index,
+        png=pixmap.tobytes("png"),
+        width=pixmap.width,
+        height=pixmap.height,
+        caption=page_caption(text),
+        title=safe_filename(clean_title(text)),
+    )
+
+
+def render_page(
+    pdf_path: str | Path, index: int, width: int = INSPECT_WIDTH
+) -> Thumbnail:
+    """Uma pagina so, no tamanho pedido — o "ver de perto" da tela de selecao.
+
+    Renderizado na hora em vez de guardado junto com as miniaturas: um deck de
+    145 paginas em tamanho grande ocuparia memoria a toa, e so uma pagina fica
+    em tela por vez.
+    """
+    with open_pdf(pdf_path) as doc:
+        if not 0 <= index < doc.page_count:
+            raise IndexError(f"pagina {index} fora do documento ({doc.page_count} paginas)")
+        return _thumbnail_of(doc[index], index, width)
+
+
 def render_thumbnails(
     pdf_path: str | Path, width: int = DEFAULT_WIDTH
 ) -> Iterator[Thumbnail]:
@@ -54,16 +88,4 @@ def render_thumbnails(
     """
     with open_pdf(pdf_path) as doc:
         for index, page in enumerate(doc):
-            scale = width / page.rect.width if page.rect.width else 1.0
-            pixmap = page.get_pixmap(
-                matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False
-            )
-            text = page.get_text()
-            yield Thumbnail(
-                index=index,
-                png=pixmap.tobytes("png"),
-                width=pixmap.width,
-                height=pixmap.height,
-                caption=page_caption(text),
-                title=safe_filename(clean_title(text)),
-            )
+            yield _thumbnail_of(page, index, width)

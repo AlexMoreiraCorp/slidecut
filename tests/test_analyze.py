@@ -35,6 +35,36 @@ def test_find_dividers_with_wrong_explicit_color_finds_nothing(deck):
     assert analyze.find_dividers(deck, color=(10, 200, 10)) == []
 
 
+# ------------------------------------------------------------ slide matriz
+def test_page_color_reads_the_dominant_tone_of_one_page(deck):
+    r, g, b = analyze.page_color(deck, 1)
+    assert r > 150 and 80 < g < 140 and b < 60
+
+
+def test_page_color_refuses_a_page_outside_the_document(deck):
+    with pytest.raises(IndexError):
+        analyze.page_color(deck, 99)
+
+
+def test_auto_detection_follows_the_most_repeated_tone(deck_two_divider_colors):
+    """Sem matriz, ganha o azul: aparece em tres paginas contra duas do laranja."""
+    assert analyze.find_dividers(deck_two_divider_colors) == [0, 4, 7]
+
+
+def test_a_matrix_page_overrides_the_most_repeated_tone(deck_two_divider_colors):
+    """Escolher um slide laranja como matriz troca o corte para o grupo laranja."""
+    matriz = analyze.page_color(deck_two_divider_colors, 2)
+    assert analyze.find_dividers(deck_two_divider_colors, color=matriz) == [2, 6]
+
+
+def test_a_matrix_page_of_plain_content_finds_only_itself(deck):
+    """Apontar uma pagina branca como matriz nao inventa divisores no deck todo."""
+    branca = analyze.page_color(deck, 3)
+    encontrados = analyze.find_dividers(deck, color=branca)
+    assert 3 in encontrados
+    assert 0 not in encontrados
+
+
 def test_parse_color_accepts_hex_forms():
     assert analyze.parse_color("#B06E03") == (176, 110, 3)
     assert analyze.parse_color("b06e03") == (176, 110, 3)

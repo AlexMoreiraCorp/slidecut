@@ -200,3 +200,43 @@ def test_batch_confirm_prompt_mentions_the_count():
 def test_mixed_formats_prompt_lists_the_extensions_found():
     texto = gui.mixed_formats_prompt({".pptx", ".pdf"})
     assert ".pptx" in texto and ".pdf" in texto
+
+
+# ------------------------------------------- previa do nome do arquivo gerado
+def test_filename_preview_shows_the_name_that_will_be_written():
+    assert gui.filename_preview(1, "Remédios", "", "") == "01 - Remédios.pdf"
+
+
+def test_filename_preview_wraps_the_title_with_prefix_and_suffix():
+    nome = gui.filename_preview(2, "Remédios", prefix="Aula 02", suffix="rev1")
+    assert nome == "02 - Aula 02 Remédios rev1.pdf"
+
+
+def test_filename_preview_falls_back_when_the_user_empties_the_title():
+    """Campo vazio volta a usar o texto da pagina; a previa nao pode mentir."""
+    nome = gui.filename_preview(1, "   ", prefix="Aula 02", fallback="Título da página")
+    assert "Título da página" in nome
+
+
+def test_filename_preview_cleans_characters_windows_refuses():
+    assert "/" not in gui.filename_preview(1, "a/b")
+
+
+# ----------------------------------------- resumo com paginas fora do corte
+def test_selection_summary_mentions_pages_left_out_of_the_cut():
+    texto = gui.selection_summary(3, 145, excluded=4)
+    assert "4" in texto
+    assert "fora" in texto.lower()
+
+
+def test_selection_summary_stays_quiet_when_nothing_was_left_out():
+    assert "fora" not in gui.selection_summary(3, 145).lower()
+
+
+# ------------------------------------------------------- rotulo do inspetor
+def test_inspector_label_names_the_page_being_looked_at():
+    assert gui.inspector_label(0, 7) == "Página 1 de 7"
+
+
+def test_colour_hex_is_written_the_way_the_rest_of_the_app_writes_it():
+    assert gui.colour_hex((176, 110, 3)) == "#B06E03"
