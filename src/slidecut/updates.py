@@ -1,7 +1,13 @@
 """Verifica se ha uma versao mais nova no GitHub, baixa e instala sob confirmacao.
 
-A checagem le o arquivo __init__.py direto do branch principal no GitHub (raw,
-sem autenticacao — o repositorio e publico) e compara com a versao instalada.
+A checagem pergunta a API de releases do GitHub qual e o ultimo lancamento
+publicado (sem autenticacao — o repositorio e publico) e compara com a versao
+instalada. E de proposito que a fonte seja o release, e nao o codigo-fonte no
+branch: o codigo ganha a versao nova assim que o commit sobe, enquanto o
+instalador so existe quando o release e publicado — anunciar a partir do fonte
+avisaria de uma versao que ninguem ainda consegue baixar. O raw do GitHub
+tambem serve conteudo com ate 5 minutos de atraso, e a API nao.
+
 Qualquer falha (sem internet, GitHub fora do ar, resposta inesperada) e
 silenciosa: checar atualizacao nunca pode atrapalhar quem so quer cortar um
 PDF.
@@ -23,12 +29,10 @@ from pathlib import Path
 from typing import Callable
 
 REPO = "AlexMoreiraCorp/slidecut"
-VERSION_URL = (
-    f"https://raw.githubusercontent.com/{REPO}/master/src/slidecut/__init__.py"
-)
+VERSION_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
 
-_VERSION_RE = re.compile(r'__version__\s*=\s*"([^"]+)"')
+_VERSION_RE = re.compile(r'"tag_name"\s*:\s*"v?([^"]+)"')
 _VERSION_TUPLE_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 _HEX_RE = re.compile(r"[0-9a-fA-F]{64}")
 
@@ -49,7 +53,7 @@ class UpdateAvailable:
 
 
 def parse_version(text: str) -> str | None:
-    """Extrai o valor de __version__ de dentro do texto de __init__.py."""
+    """Extrai a versao da tag do release (tag_name), sem o "v" da frente."""
     match = _VERSION_RE.search(text)
     return match.group(1) if match else None
 

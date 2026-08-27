@@ -6,13 +6,26 @@ from slidecut import updates
 
 
 # ------------------------------------------------------ leitura da versao
-def test_parse_version_reads_the_string_from_the_init_file():
-    texto = '"""slidecut"""\n\n__version__ = "0.10.4"\n\n__all__ = ["__version__"]\n'
-    assert updates.parse_version(texto) == "0.10.4"
+def test_parse_version_reads_the_tag_from_the_release_api():
+    corpo = '{"tag_name": "v0.10.6", "name": "v0.10.6", "draft": false}'
+    assert updates.parse_version(corpo) == "0.10.6"
 
 
 def test_parse_version_returns_none_when_nothing_matches():
-    assert updates.parse_version("arquivo sem versao nenhuma") is None
+    assert updates.parse_version("nao e json nenhum") is None
+
+
+def test_parse_version_returns_none_for_a_release_without_a_tag():
+    assert updates.parse_version('{"name": "sem tag"}') is None
+
+
+def test_the_version_source_is_the_release_api_not_the_source_file():
+    """O codigo-fonte no branch muda antes de o instalador existir; anunciar a
+    partir dele avisaria de uma versao que ninguem consegue baixar ainda. E o
+    raw do GitHub ainda serve conteudo velho por ate 5 minutos."""
+    assert "api.github.com" in updates.VERSION_URL
+    assert "releases/latest" in updates.VERSION_URL
+    assert "raw.githubusercontent" not in updates.VERSION_URL
 
 
 # ------------------------------------------------------- comparar versoes
@@ -43,14 +56,14 @@ def test_is_newer_treats_garbage_as_not_newer():
 
 # -------------------------------------------------- verificacao ponta a ponta
 def test_check_for_update_reports_a_newer_version_available():
-    resultado = updates.check_for_update("0.10.3", fetch=lambda url: '__version__ = "0.10.4"')
+    resultado = updates.check_for_update("0.10.3", fetch=lambda url: '{"tag_name": "v0.10.4"}')
     assert resultado is not None
     assert resultado.version == "0.10.4"
     assert resultado.url == updates.RELEASES_URL
 
 
 def test_check_for_update_is_none_when_already_up_to_date():
-    resultado = updates.check_for_update("0.10.4", fetch=lambda url: '__version__ = "0.10.4"')
+    resultado = updates.check_for_update("0.10.4", fetch=lambda url: '{"tag_name": "v0.10.4"}')
     assert resultado is None
 
 

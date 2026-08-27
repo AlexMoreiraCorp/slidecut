@@ -1,5 +1,14 @@
 # Notas de atualização
 
+## 0.10.7 — 2026-08-27
+
+### Verificação de atualização mais confiável
+- A checagem de versão nova passou a consultar a lista oficial de lançamentos do GitHub, em vez
+  de ler o código-fonte do projeto. Dois problemas resolvidos: a leitura anterior vinha de um
+  endereço com cache de até 5 minutos (o aviso demorava a aparecer), e podia anunciar uma versão
+  cujo instalador ainda não tinha sido publicado — o download automático falharia. Agora só é
+  anunciada versão que já está pronta para baixar.
+
 ## 0.10.6 — 2026-08-27
 
 ### Desempenho e fluidez
