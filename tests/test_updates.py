@@ -72,3 +72,87 @@ def test_check_for_update_never_raises_even_on_a_surprising_error():
         raise ValueError("qualquer coisa inesperada")
 
     assert updates.check_for_update("0.10.3", fetch=explode) is None
+
+
+# --------------------------------------------------------- baixar e instalar
+def test_installer_url_follows_the_release_asset_convention():
+    assert updates.installer_url("0.10.5") == (
+        "https://github.com/AlexMoreiraCorp/slidecut/releases/download/"
+        "v0.10.5/slidecut-setup-0.10.5.exe"
+    )
+
+
+def test_checksum_url_points_to_the_sidecar_file():
+    assert updates.checksum_url("0.10.5") == (
+        "https://github.com/AlexMoreiraCorp/slidecut/releases/download/"
+        "v0.10.5/slidecut-setup-0.10.5.exe.sha256"
+    )
+
+
+def test_verify_sha256_accepts_matching_bytes():
+    dados = b"conteudo qualquer"
+    import hashlib
+
+    digest = hashlib.sha256(dados).hexdigest()
+    assert updates.verify_sha256(dados, digest) is True
+
+
+def test_verify_sha256_rejects_a_mismatch():
+    assert updates.verify_sha256(b"conteudo qualquer", "0" * 64) is False
+
+
+def test_verify_sha256_ignores_case_and_surrounding_whitespace():
+    """O arquivo .sha256 costuma vir como 'HASH  nome-do-arquivo\\n'."""
+    import hashlib
+
+    dados = b"conteudo qualquer"
+    digest = hashlib.sha256(dados).hexdigest().upper()
+    assert updates.verify_sha256(dados, f"  {digest}  arquivo.exe\n") is True
+
+
+def test_download_installer_writes_the_verified_file(tmp_path):
+    import hashlib
+
+    conteudo = b"MZ" + b"instalador falso" * 10
+    digest = hashlib.sha256(conteudo).hexdigest()
+
+    def fetch_bytes(url):
+        if url.endswith(".sha256"):
+            return digest.encode()
+        return conteudo
+
+    destino = updates.download_installer("0.10.5", tmp_path, fetch_bytes=fetch_bytes)
+    assert destino.name == "slidecut-setup-0.10.5.exe"
+    assert destino.read_bytes() == conteudo
+
+
+def test_download_installer_refuses_a_file_that_fails_the_checksum(tmp_path):
+    def fetch_bytes(url):
+        if url.endswith(".sha256"):
+            return b"0" * 64
+        return b"MZ conteudo adulterado"
+
+    with pytest.raises(updates.UpdateDownloadError, match="[Ii]ntegridade"):
+        updates.download_installer("0.10.5", tmp_path, fetch_bytes=fetch_bytes)
+    assert not (tmp_path / "slidecut-setup-0.10.5.exe").exists()
+
+
+def test_download_installer_wraps_a_network_failure(tmp_path):
+    def fetch_bytes(_url):
+        raise OSError("sem rede")
+
+    with pytest.raises(updates.UpdateDownloadError):
+        updates.download_installer("0.10.5", tmp_path, fetch_bytes=fetch_bytes)
+
+
+def test_download_installer_never_leaves_a_partial_file_behind(tmp_path):
+    """Se a verificacao falhar, nao pode sobrar um .exe incompleto ou adulterado
+    no disco esperando alguem clicar nele sem saber."""
+    def fetch_bytes(url):
+        if url.endswith(".sha256"):
+            return b"0" * 64
+        return b"lixo"
+
+    with pytest.raises(updates.UpdateDownloadError):
+        updates.download_installer("0.10.5", tmp_path, fetch_bytes=fetch_bytes)
+    assert list(tmp_path.iterdir()) == []

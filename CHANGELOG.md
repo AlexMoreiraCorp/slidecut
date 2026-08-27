@@ -1,5 +1,19 @@
 # Notas de atualização
 
+## 0.10.5 — 2026-08-27
+
+### Atualização automática
+- O aviso de "nova versão disponível" agora oferece baixar e instalar sozinho: clicar pergunta
+  se quer baixar e instalar agora (o app fecha para concluir) ou abrir a página de download no
+  navegador. Nada roda sem essa confirmação.
+- O instalador baixado é conferido contra um checksum SHA-256 publicado junto do release antes
+  de rodar — se não bater, o app recusa executar e explica o motivo, sem deixar arquivo nenhum
+  no disco.
+- Falha no download (sem internet, checksum não bate) mostra o motivo e deixa o aviso ali para
+  tentar de novo — nunca trava nem esconde o problema.
+- A partir desta versão, cada lançamento publica o instalador como *release* no GitHub
+  (`slidecut-setup-X.Y.Z.exe` + `.sha256`), que é de onde a atualização automática baixa.
+
 ## 0.10.4 — 2026-08-27
 
 ### Desempenho

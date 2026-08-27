@@ -348,6 +348,67 @@ def test_clicking_the_update_notice_opens_the_releases_page(app, monkeypatch):
     assert abertos == [updates.RELEASES_URL]
 
 
+def test_clicking_the_notice_asks_before_doing_anything(app, monkeypatch):
+    """Nada roda sem essa pergunta — nem download, nem navegador."""
+    from slidecut import updates
+
+    perguntas = []
+    monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a: perguntas.append(a) or False)
+    abertos = []
+    monkeypatch.setattr(gui.webbrowser, "open", lambda url: abertos.append(url))
+
+    app._show_update_notice(updates.UpdateAvailable(version="9.9.9"))
+    app._on_update_notice_click()
+
+    assert perguntas, "deveria ter perguntado antes de agir"
+    assert abertos == [updates.RELEASES_URL], "escolher 'nao' abre o navegador, nao baixa nada"
+
+
+def test_confirming_the_download_launches_the_installer_and_closes_the_app(
+    app, monkeypatch, tmp_path
+):
+    from slidecut import updates
+
+    monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a: True)
+    instalador = tmp_path / "slidecut-setup-9.9.9.exe"
+    instalador.write_bytes(b"MZ instalador falso")
+    monkeypatch.setattr(updates, "download_installer", lambda *a, **kw: instalador)
+
+    lancado = []
+    monkeypatch.setattr(gui.subprocess, "Popen", lambda args, **kw: lancado.append(args))
+    fechado = []
+    monkeypatch.setattr(gui.SlidecutApp, "_on_close", lambda self: fechado.append(True))
+
+    app._show_update_notice(updates.UpdateAvailable(version="9.9.9"))
+    app._on_update_notice_click()
+    _pump_until(app, lambda: fechado, limit=200)
+
+    assert lancado == [[str(instalador)]]
+    assert fechado == [True]
+
+
+def test_a_failed_download_explains_why_and_lets_the_user_try_again(app, monkeypatch):
+    from slidecut import updates
+
+    monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a: True)
+
+    def falha(*_a, **_kw):
+        raise updates.UpdateDownloadError("checksum não bateu")
+
+    monkeypatch.setattr(updates, "download_installer", falha)
+    erros = []
+    monkeypatch.setattr(gui.messagebox, "showerror", lambda *a: erros.append(a))
+
+    app._show_update_notice(updates.UpdateAvailable(version="9.9.9"))
+    app._on_update_notice_click()
+    _pump_until(app, lambda: erros, limit=200)
+
+    assert erros
+    assert "checksum" in erros[0][1]
+    assert app._updating is False
+    assert _is_shown(app.update_notice), "continua ali para o usuario tentar de novo"
+
+
 def test_the_batch_screen_shares_the_prefix_with_the_single_file_screen(app):
     """Um prefixo escolhido vale para todo arquivo gerado, nao so para uma tela."""
     app._show_batch()

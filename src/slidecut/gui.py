@@ -413,7 +413,7 @@ class SlidecutApp:
             bar, text="", font=self.fonts.small, background=theme.INK,
             foreground=theme.CUT, cursor="hand2",
         )
-        self.update_notice.bind("<Button-1>", lambda _e: self._open_update_page())
+        self.update_notice.bind("<Button-1>", lambda _e: self._on_update_notice_click())
 
 
     def _build_credit_strip(self) -> None:
@@ -1682,6 +1682,18 @@ class SlidecutApp:
                     messagebox.showinfo(WINDOW_TITLE, format_result_summary(payload))
                 elif kind == "update":
                     self._show_update_notice(payload)
+                elif kind == "update_ready":
+                    self._launch_installer(payload)
+                elif kind == "update_failed":
+                    self._updating = False
+                    self.update_notice.configure(
+                        text=f"Nova versão disponível: v{self._update_version} →",
+                        cursor="hand2")
+                    messagebox.showerror(
+                        WINDOW_TITLE,
+                        f"Não consegui atualizar automaticamente.\n\n{payload}\n\n"
+                        "Você pode baixar manualmente pelo navegador.",
+                    )
                 elif kind == "error":
                     self._set_busy(False)
                     self._stop_progress()
@@ -1703,12 +1715,62 @@ class SlidecutApp:
             self._events.put(("update", result))
 
     def _show_update_notice(self, result: "updates.UpdateAvailable") -> None:
+        self._update_version = result.version
         self._update_url = result.url
+        self._updating = False
         self.update_notice.configure(text=f"Nova versão disponível: v{result.version} →")
         self.update_notice.pack(side="left", padx=(4, 0))
 
     def _open_update_page(self) -> None:
         webbrowser.open(getattr(self, "_update_url", updates.RELEASES_URL))
+
+    def _on_update_notice_click(self) -> None:
+        """Pergunta como o usuario quer atualizar — nada roda sem essa confirmacao."""
+        version = getattr(self, "_update_version", None)
+        if version is None or getattr(self, "_updating", False):
+            return
+
+        if messagebox.askyesno(
+            WINDOW_TITLE,
+            f"Baixar e instalar a versão v{version} agora?\n\n"
+            "O aplicativo vai fechar para concluir a instalação. Escolha "
+            "\"Não\" para abrir a página de download no navegador em vez disso.",
+        ):
+            self._start_update_download(version)
+        else:
+            self._open_update_page()
+
+    def _start_update_download(self, version: str) -> None:
+        self._updating = True
+        self.update_notice.configure(text=f"Baixando v{version}...", cursor="watch")
+        threading.Thread(target=self._run_download_update, args=(version,), daemon=True).start()
+
+    def _run_download_update(self, version: str) -> None:
+        try:
+            # Pasta propria, fora do workdir de trabalho: o workdir e apagado
+            # ao fechar a janela, e o instalador continua lendo o proprio
+            # .exe enquanto roda — nunca guardar ali algo que precisa
+            # sobreviver ao fechamento do app.
+            dest = Path(tempfile.gettempdir()) / "slidecut-update"
+            installer = updates.download_installer(version, dest)
+            self._events.put(("update_ready", installer))
+        except updates.UpdateDownloadError as exc:
+            self._events.put(("update_failed", str(exc)))
+
+    def _launch_installer(self, installer_path: Path) -> None:
+        try:
+            subprocess.Popen([str(installer_path)], close_fds=True)
+        except OSError as exc:
+            self._updating = False
+            self.update_notice.configure(
+                text=f"Nova versão disponível: v{self._update_version} →", cursor="hand2")
+            messagebox.showerror(
+                WINDOW_TITLE,
+                f"Baixei o instalador mas não consegui abrir automaticamente.\n\n{exc}\n\n"
+                f"Abra manualmente: {installer_path}",
+            )
+            return
+        self._on_close()
 
     def _on_close(self) -> None:
         shutil.rmtree(self.workdir, ignore_errors=True)

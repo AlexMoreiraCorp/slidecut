@@ -1,34 +1,43 @@
-"""Verifica se ha uma versao mais nova no GitHub.
-
-So avisa — nunca baixa nem instala nada sozinho. Baixar e substituir o proprio
-executavel em execucao e um problema bem maior (processo a parte, reinicio,
-permissao de admin) e fora do escopo daqui: o usuario decide quando atualizar,
-o programa so evita que ele descubra tarde demais que existe uma versao nova.
+"""Verifica se ha uma versao mais nova no GitHub, baixa e instala sob confirmacao.
 
 A checagem le o arquivo __init__.py direto do branch principal no GitHub (raw,
 sem autenticacao — o repositorio e publico) e compara com a versao instalada.
 Qualquer falha (sem internet, GitHub fora do ar, resposta inesperada) e
 silenciosa: checar atualizacao nunca pode atrapalhar quem so quer cortar um
 PDF.
+
+Baixar e instalar so acontece se o usuario pedir explicitamente (a janela
+sempre confirma antes). O instalador baixado e conferido contra um checksum
+SHA-256 publicado junto do release antes de rodar — sem isso, qualquer um no
+meio do caminho (proxy, DNS, mirror comprometido) poderia trocar o .exe por
+outra coisa e o programa executaria sem perceber.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
+REPO = "AlexMoreiraCorp/slidecut"
 VERSION_URL = (
-    "https://raw.githubusercontent.com/AlexMoreiraCorp/slidecut/master/"
-    "src/slidecut/__init__.py"
+    f"https://raw.githubusercontent.com/{REPO}/master/src/slidecut/__init__.py"
 )
-RELEASES_URL = "https://github.com/AlexMoreiraCorp/slidecut/releases/latest"
+RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
 
 _VERSION_RE = re.compile(r'__version__\s*=\s*"([^"]+)"')
 _VERSION_TUPLE_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+_HEX_RE = re.compile(r"[0-9a-fA-F]{64}")
 
 Fetcher = Callable[[str], str]
+BytesFetcher = Callable[[str], bytes]
+
+
+class UpdateDownloadError(Exception):
+    """Baixar ou conferir o instalador falhou. A mensagem e para mostrar na tela."""
 
 
 @dataclass(frozen=True)
@@ -72,6 +81,11 @@ def _fetch_from_github(url: str) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+def _fetch_bytes_from_github(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 - URL fixa, https
+        return response.read()
+
+
 def check_for_update(
     current_version: str, fetch: Fetcher = _fetch_from_github
 ) -> UpdateAvailable | None:
@@ -86,3 +100,54 @@ def check_for_update(
         return None
 
     return UpdateAvailable(version=remote_version)
+
+
+def installer_url(version: str) -> str:
+    """Onde o instalador dessa versao fica publicado, seguindo o padrao do build."""
+    return f"https://github.com/{REPO}/releases/download/v{version}/slidecut-setup-{version}.exe"
+
+
+def checksum_url(version: str) -> str:
+    return f"{installer_url(version)}.sha256"
+
+
+def verify_sha256(data: bytes, expected: str) -> bool:
+    """Confere o hash dos bytes baixados contra o que veio no arquivo .sha256.
+
+    O arquivo .sha256 costuma vir no formato `HASH  nome-do-arquivo`, entao so
+    o primeiro token hexadecimal de 64 caracteres importa; o resto (nome do
+    arquivo, quebra de linha) e ignorado.
+    """
+    match = _HEX_RE.search(expected)
+    if match is None:
+        return False
+    return hashlib.sha256(data).hexdigest().lower() == match.group(0).lower()
+
+
+def download_installer(
+    version: str, dest_dir: str | Path, fetch_bytes: BytesFetcher = _fetch_bytes_from_github
+) -> Path:
+    """Baixa o instalador da versao pedida, confere a integridade e grava em disco.
+
+    So grava o arquivo se o hash bater. Uma verificacao que falha nunca deixa
+    um instalador incompleto ou adulterado no disco esperando alguem clicar
+    nele sem saber o que e.
+    """
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    target = dest_dir / f"slidecut-setup-{version}.exe"
+
+    try:
+        checksum_text = fetch_bytes(checksum_url(version)).decode("ascii", errors="replace")
+        installer_bytes = fetch_bytes(installer_url(version))
+    except Exception as exc:
+        raise UpdateDownloadError(f"não consegui baixar o instalador: {exc}") from exc
+
+    if not verify_sha256(installer_bytes, checksum_text):
+        raise UpdateDownloadError(
+            "o instalador baixado não bateu com a verificação de integridade "
+            "(checksum). Por segurança, ele não foi executado."
+        )
+
+    target.write_bytes(installer_bytes)
+    return target
