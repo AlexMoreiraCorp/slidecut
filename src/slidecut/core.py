@@ -46,6 +46,10 @@ class PreparedDocument:
     page_count: int
     suggested_dividers: list[int]
     divider_color_hex: str | None
+    colors: list[analyze.PageColor] = field(default_factory=list)
+    """Cor dominante ja calculada de cada pagina. Guardada aqui para que trocar
+    o slide matriz depois nao precise renderizar o PDF inteiro de novo — so
+    filtra esta lista pela nova cor."""
 
 
 @dataclass(frozen=True)
@@ -106,7 +110,7 @@ def prepare(
 
     if target is None:
         _notify(on_progress, "Nenhuma cor divisora detectada; marque os cortes na mao.")
-        return PreparedDocument(source, pdf_path, len(colors), [], None)
+        return PreparedDocument(source, pdf_path, len(colors), [], None, colors)
 
     dividers = analyze.find_dividers(
         pdf_path, color=target, tolerance=tolerance, min_coverage=min_coverage, colors=colors
@@ -114,7 +118,7 @@ def prepare(
     hex_color = "#{:02X}{:02X}{:02X}".format(*target)
     _notify(on_progress, f"Cor divisora: {hex_color} ({len(dividers)} paginas)")
 
-    return PreparedDocument(source, pdf_path, len(colors), dividers, hex_color)
+    return PreparedDocument(source, pdf_path, len(colors), dividers, hex_color, colors)
 
 
 def normalise_dividers(dividers: list[int], page_count: int) -> list[int]:
@@ -177,7 +181,7 @@ def cut_at(
         raise NoDividerFound(
             "todas as paginas foram desmarcadas; nao sobrou nada para gravar."
         )
-    _notify(on_progress, f"{len(chapters)} capitulos identificados.")
+    _notify(on_progress, f"{len(chapters)} cortes identificados.")
 
     if list_only:
         return ProcessResult(document.divider_color_hex, chapters, resolved_outdir, written=[])

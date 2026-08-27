@@ -1,5 +1,27 @@
 # Notas de atualização
 
+## 0.10.4 — 2026-08-27
+
+### Desempenho
+- Corrigido travamento ao usar **"Usar como slide matriz"** em documentos grandes (300+
+  páginas). A troca de matriz disparava uma nova varredura de cor de todas as páginas do zero,
+  na mesma thread da janela — travava o aplicativo inteiro até terminar. Agora reaproveita as
+  cores já calculadas na abertura do arquivo; a troca de matriz é instantânea.
+
+### Terminologia
+- "Capítulo" trocado por **"corte"** em toda a tela: rótulos, faixas da grade
+  ("CORTE 01", "CORTE 02"...), mensagens de aviso e texto de progresso.
+
+### Versão visível e verificação de atualização
+- O número da versão instalada aparece agora no título da janela e no cabeçalho
+  (ex.: `v0.10.4`), para saber de relance se está desatualizado.
+- O aplicativo verifica em segundo plano, ao abrir, se há uma versão mais nova publicada no
+  GitHub. Quando há, aparece um aviso discreto no cabeçalho — clicar abre a página de downloads
+  no navegador. Nunca baixa nem instala nada sozinho, e uma checagem que falha (sem internet,
+  GitHub fora do ar) não afeta o uso normal do programa.
+- O repositório do projeto passou a ser público no GitHub (sem código sensível), o que permite
+  essa verificação sem exigir login.
+
 ## 0.10.3 — 2026-08-27
 
 ### Fluidez

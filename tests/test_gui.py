@@ -264,6 +264,12 @@ def test_fit_window_geometry_never_goes_below_the_minimum_size():
     assert int(altura) == 700
 
 
+def test_version_label_matches_the_package_version():
+    from slidecut import __version__
+
+    assert gui.VERSION_LABEL == f"v{__version__}"
+
+
 def test_fit_window_geometry_centres_the_window():
     geometria = gui.fit_window_geometry(1600, 900, 1200, 800, 1080, 700)
     _size, x, y = geometria.split("+")

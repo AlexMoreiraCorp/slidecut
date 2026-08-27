@@ -23,10 +23,12 @@ import sys
 import tempfile
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import analyze, convert, core, layout, preview, resources, theme, titles
+from . import __version__, analyze, convert, core, layout, preview, resources, theme, titles
+from . import updates
 from .errors import SlidecutError
 
 try:  # arrastar arquivo para a janela; a aplicacao funciona sem isso
@@ -36,6 +38,7 @@ except ImportError:  # pragma: no cover - depende do ambiente
     TkinterDnD = None
 
 WINDOW_TITLE = "slidecut"
+VERSION_LABEL = f"v{__version__}"
 CREDIT = "Desenvolvido por Alex Moreira Productions"
 WINDOW_WIDTH, WINDOW_HEIGHT = 1320, 860
 """Tamanho alvo numa tela grande. fit_window_geometry() encolhe isto para caber
@@ -86,7 +89,7 @@ LAYOUT_CHOICES = [
 ]
 
 MODE_CHOICES = [
-    ("Cortar em capítulos", "cortar"),
+    ("Cortar em cortes", "cortar"),
     ("Só converter e organizar", "converter"),
 ]
 
@@ -325,7 +328,7 @@ def mixed_formats_prompt(extensions: set[str]) -> str:
 class SlidecutApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title(WINDOW_TITLE)
+        self.root.title(f"{WINDOW_TITLE} {VERSION_LABEL}")
         self.root.update_idletasks()
         self.root.geometry(fit_window_geometry(
             root.winfo_screenwidth(), root.winfo_screenheight(),
@@ -380,6 +383,7 @@ class SlidecutApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(30, self._drain_events)
+        self._check_for_update()
 
     # ------------------------------------------------------------- chrome
     def _build_header(self) -> None:
@@ -396,8 +400,20 @@ class SlidecutApp:
         mark.create_rectangle(8, 22, 26, 28, fill="#DCE3EA", outline="")
 
         ttk.Label(bar, text="SLIDECUT", style="Brand.TLabel").pack(side="left")
+        tk.Label(bar, text=VERSION_LABEL, font=self.fonts.tiny, background=theme.INK,
+                foreground=theme.CUT, padx=0).pack(side="left", padx=(6, 0), pady=(6, 0))
         self.header_file = ttk.Label(bar, text="", style="BrandSub.TLabel")
         self.header_file.pack(side="left", padx=16)
+
+        # Aviso de atualizacao: escondido ate a checagem em segundo plano
+        # confirmar que existe uma versao mais nova. Clicavel — abre a pagina
+        # de downloads no navegador; o programa nunca baixa nem instala nada
+        # sozinho.
+        self.update_notice = tk.Label(
+            bar, text="", font=self.fonts.small, background=theme.INK,
+            foreground=theme.CUT, cursor="hand2",
+        )
+        self.update_notice.bind("<Button-1>", lambda _e: self._open_update_page())
 
 
     def _build_credit_strip(self) -> None:
@@ -659,7 +675,7 @@ class SlidecutApp:
 
         left = tk.Frame(row, background=theme.SURFACE)
         left.pack(side="left")
-        ttk.Label(left, text="Marque onde cada capítulo começa",
+        ttk.Label(left, text="Marque onde cada corte começa",
                   style="Surface.TLabel").pack(anchor="w")
         ttk.Label(left, text="Clique numa página para vê-la de perto. Dois cliques abrem maior.",
                   style="SurfaceFaint.TLabel").pack(anchor="w")
@@ -859,7 +875,7 @@ class SlidecutApp:
         self.batch_mode_var = tk.StringVar(value="cortar")
         modes = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 4))
         modes.pack(fill="x")
-        ttk.Radiobutton(modes, text="Cortar cada arquivo em capítulos",
+        ttk.Radiobutton(modes, text="Cortar cada arquivo em cortes",
                         value="cortar", variable=self.batch_mode_var,
                         command=self._on_batch_mode_changed).pack(side="left")
         ttk.Radiobutton(modes, text="Só converter para PDF",
@@ -1132,7 +1148,7 @@ class SlidecutApp:
         dividers = [i for i, var in self.checkbox_vars.items() if var.get()]
         if not dividers:
             messagebox.showwarning(
-                WINDOW_TITLE, "Marque pelo menos uma página para começar um capítulo.")
+                WINDOW_TITLE, "Marque pelo menos uma página para começar um corte.")
             return
 
         excluded = {i for i, var in self.keep_vars.items() if not var.get()}
@@ -1456,14 +1472,19 @@ class SlidecutApp:
             messagebox.showinfo(
                 WINDOW_TITLE,
                 "Clique primeiro na página que serve de modelo — a que tem a cor "
-                "que separa os capítulos. Depois use este botão.",
+                "que separa os cortes. Depois use este botão.",
             )
             return
 
         index = self._focused
         try:
             rgb = analyze.page_color(self.document.pdf_path, index)
-            encontrados = analyze.find_dividers(self.document.pdf_path, color=rgb)
+            # colors=self.document.colors reaproveita o que prepare() ja
+            # calculou. Sem isso, find_dividers renderiza o PDF inteiro de novo
+            # do zero, pagina por pagina, na thread da interface — trava a
+            # janela inteira em documentos grandes (foi o que travou o PC).
+            encontrados = analyze.find_dividers(
+                self.document.pdf_path, color=rgb, colors=self.document.colors)
         except (OSError, IndexError, SlidecutError) as exc:
             messagebox.showerror(WINDOW_TITLE, f"Não consegui ler a cor desta página.\n\n{exc}")
             return
@@ -1555,7 +1576,7 @@ class SlidecutApp:
 
     @staticmethod
     def _fill_band(band: ttk.Frame, number: int, title: str, pages: int) -> None:
-        band.number.configure(text=f"C A P Í T U L O  {number:02d}")  # type: ignore[attr-defined]
+        band.number.configure(text=f"C O R T E  {number:02d}")  # type: ignore[attr-defined]
         band.title.configure(text=title)  # type: ignore[attr-defined]
         band.count.configure(text=f"{pages} página(s)")  # type: ignore[attr-defined]
         if not band.winfo_ismapped():
@@ -1659,6 +1680,8 @@ class SlidecutApp:
                     self._stop_progress()
                     self.open_button.configure(state="normal")
                     messagebox.showinfo(WINDOW_TITLE, format_result_summary(payload))
+                elif kind == "update":
+                    self._show_update_notice(payload)
                 elif kind == "error":
                     self._set_busy(False)
                     self._stop_progress()
@@ -1668,6 +1691,24 @@ class SlidecutApp:
             pass
         finally:
             self.root.after(30, self._drain_events)
+
+    # ------------------------------------------------------- atualizacao
+    def _check_for_update(self) -> None:
+        """Dispara a checagem numa thread — nunca pode travar a abertura do app."""
+        threading.Thread(target=self._run_check_for_update, daemon=True).start()
+
+    def _run_check_for_update(self) -> None:
+        result = updates.check_for_update(__version__)
+        if result is not None:
+            self._events.put(("update", result))
+
+    def _show_update_notice(self, result: "updates.UpdateAvailable") -> None:
+        self._update_url = result.url
+        self.update_notice.configure(text=f"Nova versão disponível: v{result.version} →")
+        self.update_notice.pack(side="left", padx=(4, 0))
+
+    def _open_update_page(self) -> None:
+        webbrowser.open(getattr(self, "_update_url", updates.RELEASES_URL))
 
     def _on_close(self) -> None:
         shutil.rmtree(self.workdir, ignore_errors=True)

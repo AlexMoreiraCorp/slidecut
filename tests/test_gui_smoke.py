@@ -323,6 +323,31 @@ def test_a_disabled_button_stops_calling_its_command(deck_ready):
 
 
 # ------------------------------------------------------------------ lote
+# ------------------------------------------------------- aviso de versao
+def test_update_notice_stays_hidden_by_default(app):
+    assert not _is_shown(app.update_notice)
+
+
+def test_update_notice_appears_when_a_newer_version_is_found(app):
+    from slidecut import updates
+
+    app._show_update_notice(updates.UpdateAvailable(version="9.9.9"))
+    app.root.update()
+    assert _is_shown(app.update_notice)
+    assert "9.9.9" in app.update_notice.cget("text")
+
+
+def test_clicking_the_update_notice_opens_the_releases_page(app, monkeypatch):
+    from slidecut import updates
+
+    abertos = []
+    monkeypatch.setattr(gui.webbrowser, "open", lambda url: abertos.append(url))
+
+    app._show_update_notice(updates.UpdateAvailable(version="9.9.9"))
+    app._open_update_page()
+    assert abertos == [updates.RELEASES_URL]
+
+
 def test_the_batch_screen_shares_the_prefix_with_the_single_file_screen(app):
     """Um prefixo escolhido vale para todo arquivo gerado, nao so para uma tela."""
     app._show_batch()

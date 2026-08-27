@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidecut import core
+from slidecut import analyze, core
 from slidecut.errors import NoDividerFound
 
 
@@ -79,6 +79,14 @@ def test_prepare_without_dividers_suggests_nothing_and_does_not_raise(
     assert doc.suggested_dividers == []
     assert doc.divider_color_hex is None
     assert doc.page_count == 4
+
+
+def test_prepare_carries_the_page_colors_it_already_computed(deck, tmp_path):
+    """As cores ficam no documento preparado para nao renderizar o PDF de novo
+    so para re-detectar cortes (ex.: ao escolher um slide matriz)."""
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+    assert len(doc.colors) == doc.page_count
+    assert [c.index for c in doc.colors] == list(range(doc.page_count))
 
 
 def test_cut_at_uses_the_pages_the_user_marked(deck, tmp_path):
@@ -207,6 +215,22 @@ def test_process_batch_names_every_file_with_the_same_prefix(deck, tmp_path):
     assert all(r.ok for r in resultados)
     gerados = [p.name for r in resultados for p in r.written]
     assert all("Turma A" in nome for nome in gerados)
+
+
+def test_reapplying_a_matrix_colour_never_rerenders_the_pdf(deck, tmp_path, monkeypatch):
+    """Reproduz o travamento com documentos grandes: escolher o slide matriz
+    disparava um novo page_colors() do zero, redesenhando o PDF inteiro de
+    novo so para filtrar por outra cor."""
+    doc = core.prepare(deck, workdir=tmp_path / "work")
+
+    def falha_se_rerender(*_a, **_kw):
+        pytest.fail("re-renderizou o PDF inteiro so para trocar a cor da matriz")
+
+    monkeypatch.setattr(analyze, "page_colors", falha_se_rerender)
+
+    matriz = analyze.page_color(doc.pdf_path, 2)
+    encontrados = analyze.find_dividers(doc.pdf_path, color=matriz, colors=doc.colors)
+    assert encontrados
 
 
 def test_prepare_uses_the_matrix_page_tone_instead_of_the_most_repeated_one(
