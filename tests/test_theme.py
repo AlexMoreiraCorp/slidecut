@@ -74,3 +74,19 @@ def test_rounded_rect_radius_never_exceeds_half_the_shortest_side():
     pontos = theme.rounded_rect_points(0, 0, 40, 20, radius=999)
     ys = pontos[1::2]
     assert max(ys) <= 20
+
+
+# ------------------------------------------------------ animacao de espera
+def test_spinner_angle_advances_by_the_step():
+    assert theme.next_spinner_angle(0) == theme.SPINNER_STEP
+
+
+def test_spinner_angle_wraps_around_a_full_turn():
+    assert theme.next_spinner_angle(360 - theme.SPINNER_STEP) == 0
+
+
+def test_spinner_angle_never_leaves_the_circle():
+    angle = 0
+    for _ in range(200):
+        angle = theme.next_spinner_angle(angle)
+        assert 0 <= angle < 360

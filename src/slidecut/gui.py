@@ -180,18 +180,6 @@ def filename_preview(
     return f"{number:02d} - {nome}.pdf" if numbered else f"{nome}.pdf"
 
 
-def default_numbering(prefix: str, suffix: str) -> bool:
-    """Se a numeracao "01, 02..." deve vir ligada por padrao.
-
-    Sem prefixo nem sufixo, o numero e a unica coisa que distingue um capitulo
-    do outro — fica ligado. Assim que o usuario digita um dos dois, o nome ja
-    carrega uma etiqueta propria e o numero costuma sobrar; o padrao muda para
-    desligado, mas continua sendo so um padrao: o usuario liga de volta quando
-    quiser as duas coisas.
-    """
-    return not (prefix.strip() or suffix.strip())
-
-
 def inspector_label(index: int, total: int) -> str:
     return f"Página {index + 1} de {total}"
 
@@ -368,11 +356,9 @@ class SlidecutApp:
         self._inspect_image: tk.PhotoImage | None = None
         self.prefix_var = tk.StringVar()
         self.suffix_var = tk.StringVar()
-        self.numbered_var = tk.BooleanVar(value=True)
-        self._numbered_touched = False
-        """Vira True assim que o usuario mexe no check manualmente: dali em
-        diante o padrao automatico (numerar so quando nao ha prefixo/sufixo)
-        para de sobrescrever a escolha dele a cada tecla digitada."""
+        self.numbered_var = tk.BooleanVar(value=False)
+        """Comeca desmarcado por pedido explicito: numerar e opcional, o
+        usuario liga quando quiser."""
 
         self._build_header()
         self._build_credit_strip()
@@ -665,6 +651,8 @@ class SlidecutApp:
             lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
+        self.wait_overlay = theme.WaitOverlay(self.sheet_screen, self.fonts)
+
     def _build_sheet_toolbar(self) -> None:
         """Duas faixas: o que fazer com as marcas, e como nomear o que sai."""
         toolbar = tk.Frame(self.sheet_screen, background=theme.SURFACE)
@@ -711,11 +699,14 @@ class SlidecutApp:
         ttk.Label(inner, text="Depois:", style="SunkMuted.TLabel").pack(side="left")
         ttk.Entry(inner, textvariable=self.suffix_var, width=16).pack(side="left", padx=(6, 0))
 
+        # selectcolor era igual ao fundo: a caixinha marcada ficava invisivel,
+        # e o texto cinza-claro sumia perto dos rotulos em negrito ao lado —
+        # motivo do usuario nao perceber que a opcao existia.
         self.numbered_check = tk.Checkbutton(
             inner, text="numerar (01, 02...)", variable=self.numbered_var,
-            font=self.fonts.small, background=theme.SURFACE_SUNK,
-            activebackground=theme.SURFACE_SUNK, foreground=theme.SLATE,
-            activeforeground=theme.SLATE, selectcolor=theme.SURFACE_SUNK,
+            font=self.fonts.body_bold, background=theme.SURFACE_SUNK,
+            activebackground=theme.SURFACE_SUNK, foreground=theme.INK,
+            activeforeground=theme.INK, selectcolor=theme.SURFACE,
             bd=0, highlightthickness=0, cursor="hand2",
             command=self._on_numbered_touched,
         )
@@ -867,8 +858,8 @@ class SlidecutApp:
         ttk.Entry(naming, textvariable=self.suffix_var, width=16).pack(side="left", padx=(6, 0))
         tk.Checkbutton(
             naming, text="numerar (01, 02...)", variable=self.numbered_var,
-            font=self.fonts.small, background=theme.PAPER, activebackground=theme.PAPER,
-            foreground=theme.SLATE, activeforeground=theme.SLATE, selectcolor=theme.PAPER,
+            font=self.fonts.body_bold, background=theme.PAPER, activebackground=theme.PAPER,
+            foreground=theme.INK, activeforeground=theme.INK, selectcolor=theme.SURFACE,
             bd=0, highlightthickness=0, cursor="hand2", command=self._on_numbered_touched,
         ).pack(side="left", padx=(18, 0))
 
@@ -1164,6 +1155,7 @@ class SlidecutApp:
         self._set_busy(True)
         self.sheet_progress.pack(side="right", padx=16)
         self.sheet_progress.start(12)
+        self.wait_overlay.show("Gerando os cortes...")
         custom_titles = {i: self.title_vars[i].get() for i in dividers}
         threading.Thread(
             target=self._run_cut,
@@ -1245,15 +1237,13 @@ class SlidecutApp:
         cut_tag.pack(fill="x", pady=(10, 0))
 
         keep = tk.BooleanVar(value=True)
-        keep_row = tk.Frame(content, background=theme.SURFACE)
-        keep_row.pack(fill="x", pady=(6, 0))
         keep_box = tk.Checkbutton(
-            keep_row, text="entra no corte", variable=keep, font=self.fonts.tiny,
+            content, text="entra no corte", variable=keep, font=self.fonts.tiny,
             background=theme.SURFACE, activebackground=theme.SURFACE,
             foreground=theme.KEEP, activeforeground=theme.KEEP, selectcolor=theme.SURFACE,
             bd=0, highlightthickness=0, padx=0, cursor="hand2", anchor="w",
         )
-        keep_box.pack(anchor="w")
+        keep_box.pack(anchor="w", pady=(6, 0))
 
         caption = tk.Label(content, text=thumb.caption, font=self.fonts.small,
                            background=theme.SURFACE, foreground=theme.SLATE_LIGHT,
@@ -1266,8 +1256,14 @@ class SlidecutApp:
         name_label = tk.Label(name_row, text="NOME DO ARQUIVO", font=self.fonts.section,
                               background=theme.SURFACE, foreground=theme.CUT, anchor="w")
         title_var = tk.StringVar(value=thumb.title)
-        entry = ttk.Entry(name_row, textvariable=title_var, style="Name.TEntry",
-                          font=self.fonts.small)
+        # O nome aparece como rotulo; o campo editavel so e criado no cartao em
+        # foco (ver _mount_entry). Um ttk.Entry e um controle nativo do Windows,
+        # e centenas deles dentro do canvas rolavel arrastam fantasmas na tela
+        # e deixam a rolagem pesada — num documento com 360 cortes marcados eram
+        # 360 controles nativos sendo movidos a cada notch do mouse.
+        name_value = tk.Label(name_row, text=thumb.title, font=self.fonts.small,
+                              background=theme.SURFACE_SUNK, foreground=theme.INK,
+                              anchor="w", padx=4, cursor="hand2")
         name_preview = tk.Label(name_row, text="", font=self.fonts.tiny,
                                 background=theme.SURFACE, foreground=theme.SLATE_LIGHT,
                                 anchor="w", wraplength=THUMBNAIL_WIDTH, justify="left")
@@ -1278,10 +1274,14 @@ class SlidecutApp:
         self.title_vars[index] = title_var
         self.cards[index] = {
             "shell": shell, "body": body, "rail": rail, "number": number,
-            "caption": caption, "name_label": name_label, "entry": entry,
+            "caption": caption, "name_label": name_label, "entry": None,
+            "name_row": name_row, "name_value": name_value,
             "cut_tag": cut_tag, "keep_box": keep_box, "thumb": thumb_label,
             "name_preview": name_preview, "fallback": thumb.title,
         }
+        name_value.bind("<Button-1>", lambda _e, i=index: self._focus_page(i))
+        title_var.trace_add("write", lambda *_a, i=index, v=name_value: v.configure(
+            text=self.title_vars[i].get()))
 
         # Um clique abre a pagina no painel; dois cliques renderizam maior. A
         # marca de corte tem controle proprio, entao clicar para olhar nunca
@@ -1333,13 +1333,38 @@ class SlidecutApp:
 
         if marked:
             parts["name_label"].pack(fill="x")
-            parts["entry"].pack(fill="x", pady=(2, 0))
+            if focused:
+                self._mount_entry(index)
+            else:
+                self._unmount_entry(index)
+                parts["name_value"].pack(fill="x", pady=(2, 0))
             parts["name_preview"].pack(fill="x")
             self._refresh_name_preview(index)
         else:
+            self._unmount_entry(index)
             parts["name_label"].pack_forget()
-            parts["entry"].pack_forget()
+            parts["name_value"].pack_forget()
             parts["name_preview"].pack_forget()
+
+    def _mount_entry(self, index: int) -> None:
+        """Cria o campo editavel neste cartao — so o cartao em foco tem um.
+
+        Um ttk.Entry e um controle nativo do Windows. Centenas deles vivendo
+        dentro do canvas rolavel e o que deixava a rolagem cheia de fantasmas.
+        """
+        parts = self.cards[index]
+        parts["name_value"].pack_forget()
+        if parts["entry"] is None:
+            parts["entry"] = ttk.Entry(
+                parts["name_row"], textvariable=self.title_vars[index],
+                style="Name.TEntry", font=self.fonts.small)
+        parts["entry"].pack(fill="x", pady=(2, 0))
+
+    def _unmount_entry(self, index: int) -> None:
+        parts = self.cards[index]
+        if parts["entry"] is not None:
+            parts["entry"].destroy()
+            parts["entry"] = None
 
     def _refresh_name_preview(self, index: int) -> None:
         parts = self.cards.get(index)
@@ -1360,13 +1385,11 @@ class SlidecutApp:
             self._refresh_name_preview(index)
 
     def _on_numbered_touched(self) -> None:
-        """O usuario mexeu no check a mao: o padrao automatico para de decidir por ele."""
-        self._numbered_touched = True
         self._refresh_name_previews()
 
     def _on_naming_changed(self) -> None:
-        if not self._numbered_touched:
-            self.numbered_var.set(default_numbering(self.prefix_var.get(), self.suffix_var.get()))
+        """Prefixo/sufixo mudou: so atualiza a previa. Numerar fica como o
+        usuario deixou — nao se mexe mais sozinho."""
         self._refresh_name_previews()
 
     def _toggle(self, index: int) -> None:
@@ -1477,18 +1500,27 @@ class SlidecutApp:
             return
 
         index = self._focused
+        self.wait_overlay.show("Aplicando o slide matriz...")
+        threading.Thread(target=self._run_matrix, args=(index,), daemon=True).start()
+
+    def _run_matrix(self, index: int) -> None:
+        """A leitura da cor sai da thread da janela: mesmo reaproveitando as
+        cores ja calculadas, renderizar a pagina escolhida leva um instante, e
+        a janela nao pode congelar nesse meio tempo."""
         try:
             rgb = analyze.page_color(self.document.pdf_path, index)
             # colors=self.document.colors reaproveita o que prepare() ja
             # calculou. Sem isso, find_dividers renderiza o PDF inteiro de novo
-            # do zero, pagina por pagina, na thread da interface — trava a
-            # janela inteira em documentos grandes (foi o que travou o PC).
+            # do zero, pagina por pagina — foi o que travou o PC do usuario.
             encontrados = analyze.find_dividers(
                 self.document.pdf_path, color=rgb, colors=self.document.colors)
         except (OSError, IndexError, SlidecutError) as exc:
-            messagebox.showerror(WINDOW_TITLE, f"Não consegui ler a cor desta página.\n\n{exc}")
+            self._events.put(("matrix_failed", str(exc)))
             return
+        self._events.put(("matrix_done", (index, rgb, encontrados)))
 
+    def _apply_matrix_result(self, index: int, rgb, encontrados) -> None:
+        self.wait_overlay.hide()
         self._matrix_page = index
         alvo = set(encontrados) or {index}
         for page, var in self.checkbox_vars.items():
@@ -1629,6 +1661,7 @@ class SlidecutApp:
         for bar in (self.open_progress, self.sheet_progress):
             bar.stop()
             bar.pack_forget()
+        self.wait_overlay.hide()
 
     def _drain_events(self) -> None:
         try:
@@ -1680,6 +1713,12 @@ class SlidecutApp:
                     self._stop_progress()
                     self.open_button.configure(state="normal")
                     messagebox.showinfo(WINDOW_TITLE, format_result_summary(payload))
+                elif kind == "matrix_done":
+                    self._apply_matrix_result(*payload)
+                elif kind == "matrix_failed":
+                    self.wait_overlay.hide()
+                    messagebox.showerror(
+                        WINDOW_TITLE, f"Não consegui ler a cor desta página.\n\n{payload}")
                 elif kind == "update":
                     self._show_update_notice(payload)
                 elif kind == "update_ready":

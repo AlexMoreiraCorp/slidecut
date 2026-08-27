@@ -228,22 +228,6 @@ def test_filename_preview_can_drop_the_leading_number():
     assert not nome.startswith("03")
 
 
-# ------------------------------------------- numeracao automatica (padrao)
-def test_numbering_defaults_on_when_there_is_no_prefix_or_suffix():
-    assert gui.default_numbering("", "") is True
-
-
-def test_numbering_defaults_off_once_a_prefix_is_typed():
-    assert gui.default_numbering("Aula 02", "") is False
-
-
-def test_numbering_defaults_off_once_a_suffix_is_typed():
-    assert gui.default_numbering("", "rev1") is False
-
-
-def test_numbering_default_ignores_whitespace_only_fields():
-    assert gui.default_numbering("   ", "") is True
-
 
 # ------------------------------------------------- geometria responsiva
 def test_fit_window_geometry_uses_the_target_size_on_a_big_screen():

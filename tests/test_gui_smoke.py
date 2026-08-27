@@ -201,19 +201,36 @@ def test_auto_detection_picks_the_most_repeated_tone(deck_ready):
     assert _marked(deck_ready) == [0, 4, 6], "sem matriz, ganha o azul"
 
 
+def _apply_matrix(app, page: int) -> None:
+    """Escolhe o slide matriz e espera o resultado.
+
+    A operacao roda numa thread desde que passou a mostrar animacao de espera:
+    o teste tem de aguardar o resultado voltar pela fila de eventos.
+    """
+    app._focus_page(page)
+    app._use_focused_as_matrix()
+    _pump_until(app, lambda: app._matrix_page == page)
+
+
 def test_choosing_a_matrix_slide_recuts_by_that_slide_tone(deck_ready):
-    deck_ready._focus_page(2)
-    deck_ready._use_focused_as_matrix()
-    deck_ready.root.update()
+    _apply_matrix(deck_ready, 2)
     assert _marked(deck_ready) == [2, 5], "o laranja da matriz manda no corte"
 
 
 def test_the_matrix_slide_is_announced_in_the_panel_and_the_status(deck_ready):
-    deck_ready._focus_page(2)
-    deck_ready._use_focused_as_matrix()
-    deck_ready.root.update()
+    _apply_matrix(deck_ready, 2)
     assert "MATRIZ" in deck_ready.inspect_badge.cget("text")
     assert "matriz" in deck_ready.sheet_status.cget("text").lower()
+
+
+def test_the_wait_animation_shows_while_the_matrix_is_applied(deck_ready):
+    """Operacao demorada precisa avisar que esta acontecendo."""
+    deck_ready._focus_page(2)
+    deck_ready._use_focused_as_matrix()
+    assert _is_shown(deck_ready.wait_overlay.frame), "a animacao aparece durante a espera"
+
+    _pump_until(deck_ready, lambda: deck_ready._matrix_page == 2)
+    assert not _is_shown(deck_ready.wait_overlay.frame), "e some quando termina"
 
 
 def test_asking_for_a_matrix_without_choosing_a_page_does_not_crash(deck_ready, monkeypatch):
@@ -225,8 +242,7 @@ def test_asking_for_a_matrix_without_choosing_a_page_does_not_crash(deck_ready, 
 
 
 def test_clearing_marks_also_forgets_the_matrix_slide(deck_ready):
-    deck_ready._focus_page(2)
-    deck_ready._use_focused_as_matrix()
+    _apply_matrix(deck_ready, 2)
     deck_ready._clear_selection()
     deck_ready.root.update()
     assert deck_ready._matrix_page is None
@@ -239,6 +255,31 @@ def test_the_card_previews_the_name_the_file_will_get(deck_ready):
     previa = deck_ready.cards[0]["name_preview"].cget("text")
     assert previa.endswith(".pdf")
     assert "Bloco A" in previa
+
+
+def test_numbering_starts_unchecked(app):
+    """Pedido explicito: numerar e opcional e comeca desligado."""
+    assert app.numbered_var.get() is False
+
+
+def test_typing_a_prefix_no_longer_flips_the_numbering_choice(deck_ready):
+    """O check parou de se mexer sozinho: quem manda e o usuario."""
+    deck_ready.numbered_var.set(True)
+    deck_ready.prefix_var.set("Aula 02")
+    deck_ready.root.update()
+    assert deck_ready.numbered_var.get() is True
+
+
+def test_only_the_focused_card_holds_a_real_text_field(deck_ready):
+    """Centenas de campos nativos dentro da grade rolavel deixavam rastro na
+    rolagem; so o cartao em foco tem um."""
+    for index in range(len(deck_ready.cards)):
+        deck_ready._toggle(index) if index not in _marked(deck_ready) else None
+    deck_ready._focus_page(0)
+    deck_ready.root.update()
+
+    com_campo = [i for i, p in deck_ready.cards.items() if p["entry"] is not None]
+    assert com_campo == [0]
 
 
 def test_typing_a_prefix_updates_every_preview_at_once(deck_ready):

@@ -260,6 +260,71 @@ class RoundedButton(tk.Canvas):
         super().configure(cursor="hand2" if self._enabled else "arrow")
 
 
+# ------------------------------------------------------ animacao de espera
+SPINNER_STEP = 24
+"""Graus por quadro. 24 graus a cada 40ms da uma volta em ~0,6s."""
+SPINNER_INTERVAL_MS = 40
+
+
+def next_spinner_angle(angle: float) -> float:
+    """Proximo angulo do arco, sempre dentro de uma volta."""
+    return (angle + SPINNER_STEP) % 360
+
+
+class WaitOverlay:
+    """Cobre uma tela inteira enquanto uma operacao demorada acontece.
+
+    Sem isso, uma espera de alguns segundos (trocar o slide matriz num
+    documento grande, por exemplo) parecia travamento: a janela ficava parada
+    sem dizer nada, e o usuario nao sabia se devia esperar ou forcar o
+    fechamento. O overlay tambem bloqueia cliques, o que evita disparar a mesma
+    operacao duas vezes.
+    """
+
+    SIZE = 46
+
+    def __init__(self, parent: tk.Misc, fonts: Fonts) -> None:
+        self._parent = parent
+        self._angle = 0.0
+        self._job: str | None = None
+
+        self.frame = tk.Frame(parent, background=SURFACE)
+        box = tk.Frame(self.frame, background=SURFACE)
+        box.place(relx=0.5, rely=0.5, anchor="center")
+
+        self._canvas = tk.Canvas(box, width=self.SIZE, height=self.SIZE,
+                                 background=SURFACE, highlightthickness=0, bd=0)
+        self._canvas.pack()
+        pad = 4
+        self._canvas.create_oval(pad, pad, self.SIZE - pad, self.SIZE - pad,
+                                 outline=EDGE_SOFT, width=4)
+        self._arc = self._canvas.create_arc(
+            pad, pad, self.SIZE - pad, self.SIZE - pad,
+            start=90, extent=90, style="arc", outline=CUT, width=4)
+
+        self._label = tk.Label(box, text="", font=fonts.body, background=SURFACE,
+                               foreground=INK)
+        self._label.pack(pady=(14, 0))
+
+    def show(self, message: str) -> None:
+        self._label.configure(text=message)
+        self.frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.frame.lift()
+        if self._job is None:
+            self._tick()
+
+    def hide(self) -> None:
+        if self._job is not None:
+            self._parent.after_cancel(self._job)
+            self._job = None
+        self.frame.place_forget()
+
+    def _tick(self) -> None:
+        self._angle = next_spinner_angle(self._angle)
+        self._canvas.itemconfigure(self._arc, start=90 - self._angle)
+        self._job = self._parent.after(SPINNER_INTERVAL_MS, self._tick)
+
+
 def apply(root: tk.Misc, fonts: Fonts) -> ttk.Style:
     """Configura os estilos ttk usados pela janela.
 

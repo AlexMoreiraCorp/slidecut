@@ -1,5 +1,27 @@
 # Notas de atualização
 
+## 0.10.6 — 2026-08-27
+
+### Desempenho e fluidez
+- Corrigido o **rastro/fantasma ao rolar** a folha de páginas. A causa real: cada página marcada
+  criava um campo de texto nativo do Windows dentro da área rolável — com 360 cortes marcados
+  eram 360 controles sendo arrastados a cada giro da roda do mouse. Agora só a página aberta no
+  painel lateral tem campo editável; as demais mostram o nome como texto simples. O nome
+  continua editável: basta clicar na página.
+- Menos widgets por página, o que também deixa a abertura de documentos grandes mais leve.
+
+### Animação de espera
+- Operações que demoram (aplicar o **slide matriz**, **gerar os cortes**) agora mostram uma
+  animação de espera cobrindo a tela, com o texto do que está acontecendo. Antes a janela ficava
+  parada, sem indicar se era espera ou travamento.
+- Aplicar o slide matriz passou a rodar fora da thread da janela — a tela não congela mais
+  enquanto a cor é lida.
+
+### Numerar
+- A opção **"numerar (01, 02...)"** agora vem **desmarcada por padrão** e só muda quando o
+  usuário clica nela — antes se ligava e desligava sozinha conforme o prefixo era digitado.
+- Texto e caixinha com muito mais contraste: antes quase não se percebia que a opção existia.
+
 ## 0.10.5 — 2026-08-27
 
 ### Atualização automática
