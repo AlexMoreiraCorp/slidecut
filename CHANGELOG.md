@@ -1,5 +1,12 @@
 # Notas de atualização
 
+## 0.10.9 — 2026-08-27
+
+- A pasta com os arquivos gerados agora **abre sozinha** quando o corte termina — o modo
+  "converter" já fazia isso, o corte não.
+- Corrigido o texto **"Cortar em cortes"**, que sobrou da troca de "capítulo" por "corte" na
+  0.10.4. Agora é só **"Cortar"** (e "Cortar cada arquivo", no modo de vários arquivos).
+
 ## 0.10.8 — 2026-08-27
 
 ### Verificação de atualização confiável para o time inteiro

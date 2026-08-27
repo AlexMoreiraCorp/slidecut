@@ -364,6 +364,25 @@ def test_a_disabled_button_stops_calling_its_command(deck_ready):
 
 
 # ------------------------------------------------------------------ lote
+# --------------------------------------------- pasta abre ao terminar o corte
+def test_finishing_a_cut_opens_the_output_folder(app, monkeypatch, tmp_path):
+    """Terminar o corte e sempre seguido de ir ver os arquivos gerados."""
+    from slidecut import core
+
+    abertas = []
+    monkeypatch.setattr(gui, "open_in_file_manager", lambda p: abertas.append(p))
+    monkeypatch.setattr(gui.messagebox, "showinfo", lambda *a: None)
+
+    resultado = core.ProcessResult(
+        divider_color_hex="#AF6D02", chapters=[], outdir=tmp_path / "saida",
+        written=[tmp_path / "saida" / "01 - Capa.pdf"],
+    )
+    app._events.put(("cut", resultado))
+    _pump_until(app, lambda: abertas)
+
+    assert abertas == [tmp_path / "saida"]
+
+
 # ------------------------------------------------------- aviso de versao
 def test_update_notice_stays_hidden_by_default(app):
     assert not _is_shown(app.update_notice)

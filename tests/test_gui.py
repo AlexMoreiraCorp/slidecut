@@ -109,6 +109,12 @@ def test_mode_choices_cover_cutting_and_converting():
     assert "converter" in valores
 
 
+def test_mode_labels_do_not_repeat_the_word_cut():
+    """"Cortar em cortes" sobrou da troca de "capitulo" por "corte"."""
+    for rotulo, _valor in gui.MODE_CHOICES:
+        assert rotulo.lower().count("cort") <= 1, rotulo
+
+
 def test_conversion_summary_names_the_file_and_layout(tmp_path):
     texto = gui.conversion_summary(tmp_path / "Aula 01.docx", per_sheet=2)
     assert "Aula 01.docx" in texto

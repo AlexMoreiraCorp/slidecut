@@ -89,7 +89,7 @@ LAYOUT_CHOICES = [
 ]
 
 MODE_CHOICES = [
-    ("Cortar em cortes", "cortar"),
+    ("Cortar", "cortar"),
     ("Só converter e organizar", "converter"),
 ]
 
@@ -866,7 +866,7 @@ class SlidecutApp:
         self.batch_mode_var = tk.StringVar(value="cortar")
         modes = ttk.Frame(self.batch_screen, style="Paper.TFrame", padding=(24, 4))
         modes.pack(fill="x")
-        ttk.Radiobutton(modes, text="Cortar cada arquivo em cortes",
+        ttk.Radiobutton(modes, text="Cortar cada arquivo",
                         value="cortar", variable=self.batch_mode_var,
                         command=self._on_batch_mode_changed).pack(side="left")
         ttk.Radiobutton(modes, text="Só converter para PDF",
@@ -1713,6 +1713,9 @@ class SlidecutApp:
                     self._stop_progress()
                     self.open_button.configure(state="normal")
                     messagebox.showinfo(WINDOW_TITLE, format_result_summary(payload))
+                    # Abre a pasta sozinho, como o modo converter ja fazia:
+                    # terminar o corte e sempre seguido de ir ver os arquivos.
+                    open_in_file_manager(payload.outdir)
                 elif kind == "matrix_done":
                     self._apply_matrix_result(*payload)
                 elif kind == "matrix_failed":
