@@ -46,6 +46,9 @@ antigo, abrir uma pagina de perto espremia a grade a uma coluna."""
 
 THUMBNAIL_WIDTH = 168
 CARD_PAD = 10
+SCROLL_STEP = 90
+"""Pixels por notch do mouse na folha de paginas. Sem um valor fixo, o Windows
+rola em fracoes de pixel — a causa do rastro visivel ao usar a roda do mouse."""
 EVENTS_PER_TICK = 6
 REFLOW_DELAY_MS = 120
 """Reagrupar 145 cartoes a cada clique engasgaria. O cartao clicado responde na
@@ -624,7 +627,15 @@ class SlidecutApp:
 
         grid_area = ttk.Frame(body, style="Paper.TFrame")
         grid_area.pack(side="left", fill="both", expand=True)
-        self.canvas = tk.Canvas(grid_area, background=theme.PAPER, highlightthickness=0, bd=0)
+        self.canvas = tk.Canvas(
+            grid_area, background=theme.PAPER, highlightthickness=0, bd=0,
+            yscrollincrement=SCROLL_STEP,
+        )
+        # Sem yscrollincrement, o Windows rola em passos minusculos e mal
+        # alinhados: cada notch do mouse dispara varios blits parciais em
+        # pixels fracionados (pior ainda com a janela DPI-aware, onde a escala
+        # nao e um numero inteiro), e o resultado e o rastro visivel ao rolar.
+        # Um passo fixo em pixels inteiros faz o Windows mover um bloco so.
         scrollbar = ttk.Scrollbar(grid_area, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")

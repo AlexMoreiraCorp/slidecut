@@ -1,5 +1,14 @@
 # Notas de atualização
 
+## 0.10.3 — 2026-08-27
+
+### Fluidez
+- Corrigido rastro visível ao rolar a folha de páginas com a roda do mouse. O canvas não tinha
+  um passo de rolagem fixo (`yscrollincrement`); sem ele, o Windows rolava em frações de pixel
+  a cada notch, e cada blit parcial deixava sujeira na tela — mais visível ainda com a janela
+  DPI-aware da 0.10.1, onde a escala não é um número inteiro. Agora a rolagem se move em blocos
+  de pixel inteiro, sem rastro.
+
 ## 0.10.2 — 2026-08-27
 
 ### Visual
