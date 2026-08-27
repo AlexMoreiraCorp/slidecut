@@ -1,12 +1,19 @@
 """Verifica se ha uma versao mais nova no GitHub, baixa e instala sob confirmacao.
 
-A checagem pergunta a API de releases do GitHub qual e o ultimo lancamento
-publicado (sem autenticacao — o repositorio e publico) e compara com a versao
-instalada. E de proposito que a fonte seja o release, e nao o codigo-fonte no
-branch: o codigo ganha a versao nova assim que o commit sobe, enquanto o
-instalador so existe quando o release e publicado — anunciar a partir do fonte
-avisaria de uma versao que ninguem ainda consegue baixar. O raw do GitHub
-tambem serve conteudo com ate 5 minutos de atraso, e a API nao.
+A versao publicada e descoberta pedindo /releases/latest e olhando para onde o
+GitHub redireciona: /releases/tag/vX.Y.Z. Duas alternativas foram descartadas
+depois de testadas de verdade:
+
+- ler o __init__.py pelo raw.githubusercontent: serve com ate 5 minutos de
+  cache, e a versao do codigo sobe no commit enquanto o instalador so existe
+  quando o release e publicado — anunciaria uma versao que ninguem consegue
+  baixar ainda;
+- a API (api.github.com): limita 60 consultas por hora por IP, e um time
+  inteiro atras do mesmo IP corporativo estoura essa cota, deixando todo mundo
+  sem aviso nenhum.
+
+O redirecionamento nao tem cota nem cache relevante, e continua apontando para
+um release de verdade.
 
 Qualquer falha (sem internet, GitHub fora do ar, resposta inesperada) e
 silenciosa: checar atualizacao nunca pode atrapalhar quem so quer cortar um
@@ -29,10 +36,10 @@ from pathlib import Path
 from typing import Callable
 
 REPO = "AlexMoreiraCorp/slidecut"
-VERSION_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
+VERSION_URL = RELEASES_URL
 
-_VERSION_RE = re.compile(r'"tag_name"\s*:\s*"v?([^"]+)"')
+_VERSION_RE = re.compile(r"/releases/tag/v?([0-9]+\.[0-9]+\.[0-9]+)")
 _VERSION_TUPLE_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 _HEX_RE = re.compile(r"[0-9a-fA-F]{64}")
 
@@ -53,7 +60,7 @@ class UpdateAvailable:
 
 
 def parse_version(text: str) -> str | None:
-    """Extrai a versao da tag do release (tag_name), sem o "v" da frente."""
+    """Extrai a versao da URL do release, sem o "v" da frente."""
     match = _VERSION_RE.search(text)
     return match.group(1) if match else None
 
@@ -81,8 +88,13 @@ def is_newer(current: str, candidate: str) -> bool:
 
 
 def _fetch_from_github(url: str) -> str:
+    """Devolve a URL final depois do redirecionamento — e dela que sai a versao.
+
+    O corpo da pagina nao interessa (e HTML pesado); o que importa e para onde
+    /releases/latest aponta.
+    """
     with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310 - URL fixa, https
-        return response.read().decode("utf-8", errors="replace")
+        return response.geturl()
 
 
 def _fetch_bytes_from_github(url: str) -> bytes:

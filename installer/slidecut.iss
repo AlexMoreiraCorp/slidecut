@@ -18,7 +18,7 @@
 ; Compilar: ISCC.exe installer\slidecut.iss
 
 #define AppName        "slidecut"
-#define AppVersion     "0.10.7"
+#define AppVersion     "0.10.8"
 #define AppPublisher   "Alex Moreira Productions"
 #define AppExe         "slidecut.exe"
 

@@ -1,5 +1,13 @@
 # Notas de atualização
 
+## 0.10.8 — 2026-08-27
+
+### Verificação de atualização confiável para o time inteiro
+- A consulta anterior usava a API do GitHub, que limita **60 consultas por hora por endereço de
+  internet**. Como o time acessa pelo mesmo endereço da empresa, a cota estourava e *ninguém*
+  mais recebia aviso de versão nova. Agora a verificação usa a página de lançamentos, que não
+  tem essa cota — testado com a cota da API já esgotada, e funcionou normalmente.
+
 ## 0.10.7 — 2026-08-27
 
 ### Verificação de atualização mais confiável
