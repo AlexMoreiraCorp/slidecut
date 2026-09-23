@@ -42,9 +42,13 @@ jobs:
         run: |
           python -m pytest -q --tb=short 2>&1 | Tee-Object -FilePath pytest_output.txt
           $exit = $LASTEXITCODE
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Saida do pytest`n``````"
-          Get-Content pytest_output.txt -Tail 300 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``````"
+          if ($exit -ne 0) {
+            $tail = Get-Content pytest_output.txt -Tail 60
+            foreach ($line in $tail) {
+              $escaped = $line -replace "%","%25" -replace "`r","%0D" -replace "`n","%0A"
+              Write-Output "::error::$escaped"
+            }
+          }
           exit $exit
 
       - name: Gerar o icone
