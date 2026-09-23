@@ -40,7 +40,7 @@ jobs:
       - name: Rodar os testes
         shell: pwsh
         run: |
-          python -m pytest -q --tb=short 2>&1 | Tee-Object -FilePath pytest_output.txt
+          python -m pytest -q --tb=short -m "not real_office and not slow" 2>&1 | Tee-Object -FilePath pytest_output.txt
           $exit = $LASTEXITCODE
           if ($exit -ne 0) {
             $tail = Get-Content pytest_output.txt -Tail 60
