@@ -312,6 +312,68 @@ def mixed_formats_prompt(extensions: set[str]) -> str:
     )
 
 
+class Tooltip:
+    """Dica que aparece ao pairar o mouse sobre um widget, com um pequeno atraso.
+
+    Existe para as acoes que so se descobrem clicando (marcar/desfazer um
+    corte, renomear um arquivo, o atalho de Shift+clique para um intervalo):
+    a dica avisa o que o clique faz antes do usuario precisar adivinhar ou
+    clicar errado.
+    """
+
+    DELAY_MS = 450
+
+    def __init__(self, widget: tk.Widget, text_fn, font: object) -> None:
+        """text_fn e chamada sem argumentos soh na hora de mostrar a dica, para
+        exibir o texto certo mesmo se o estado do cartao mudou depois do bind."""
+        self._widget = widget
+        self._text_fn = text_fn
+        self._font = font
+        self._after_id: str | None = None
+        self._popup: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<Button-1>", self._hide, add="+")
+        widget.bind("<Destroy>", self._hide, add="+")
+
+    def _schedule(self, _event=None) -> None:
+        self._cancel_pending()
+        self._after_id = self._widget.after(self.DELAY_MS, self._show)
+
+    def _cancel_pending(self) -> None:
+        if self._after_id is not None:
+            self._widget.after_cancel(self._after_id)
+            self._after_id = None
+
+    def _show(self) -> None:
+        self._after_id = None
+        if self._popup is not None or not self._widget.winfo_exists():
+            return
+        text = self._text_fn()
+        if not text:
+            return
+        x = self._widget.winfo_rootx() + 10
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
+        popup = tk.Toplevel(self._widget)
+        popup.wm_overrideredirect(True)
+        try:
+            popup.wm_attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        tk.Label(
+            popup, text=text, background=theme.INK, foreground=theme.SURFACE,
+            font=self._font, padx=8, pady=4, justify="left", wraplength=260,
+        ).pack()
+        popup.wm_geometry(f"+{x}+{y}")
+        self._popup = popup
+
+    def _hide(self, _event=None) -> None:
+        self._cancel_pending()
+        if self._popup is not None:
+            self._popup.destroy()
+            self._popup = None
+
+
 # ------------------------------------------------------------------ janela
 class SlidecutApp:
     def __init__(self, root: tk.Tk) -> None:
@@ -353,6 +415,9 @@ class SlidecutApp:
         self._focused: int | None = None
         """Pagina aberta no painel de inspecao — "estou olhando esta"."""
         self._matrix_page: int | None = None
+        self._keep_anchor: int | None = None
+        """Ultima pagina clicada (sem Shift) na marca fora-do-corte — Shift+clique
+        noutra pagina aplica o mesmo estado a todo o intervalo entre as duas."""
         self._inspect_image: tk.PhotoImage | None = None
         self.prefix_var = tk.StringVar()
         self.suffix_var = tk.StringVar()
@@ -1196,6 +1261,7 @@ class SlidecutApp:
         self.thumbnail_images.clear()
         self._matrix_page = None
         self._focused = None
+        self._keep_anchor = None
         self._inspect_image = None
         self.inspector.pack_forget()
 
@@ -1280,6 +1346,11 @@ class SlidecutApp:
             "name_preview": name_preview, "fallback": thumb.title,
         }
         name_value.bind("<Button-1>", lambda _e, i=index: self._focus_page(i))
+        Tooltip(
+            name_value,
+            lambda: "Clique para renomear este corte",
+            self.fonts.tiny,
+        )
         title_var.trace_add("write", lambda *_a, i=index, v=name_value: v.configure(
             text=self.title_vars[i].get()))
 
@@ -1290,6 +1361,29 @@ class SlidecutApp:
             widget.bind("<Button-1>", lambda _e, i=index: self._focus_page(i))
             widget.bind("<Double-Button-1>", lambda _e, i=index: self._focus_page(i, big=True))
         cut_tag.bind("<Button-1>", lambda _e, i=index: self._toggle(i))
+        Tooltip(
+            cut_tag,
+            lambda i=index: (
+                "Clique para desfazer este corte — a página volta para o corte "
+                "anterior"
+                if self.checkbox_vars[i].get()
+                else "Clique para começar um corte novo aqui"
+            ),
+            self.fonts.tiny,
+        )
+        # Clique simples continua marcando so esta pagina, igual sempre.
+        # Shift+clique aplica o mesmo estado (dentro/fora do corte) a todo o
+        # intervalo entre a ultima pagina clicada e esta.
+        keep_box.bind("<Button-1>", lambda _e, i=index: self._keep_box_clicked(i), add="+")
+        keep_box.bind("<Shift-Button-1>", lambda _e, i=index: self._keep_box_shift_clicked(i))
+        Tooltip(
+            keep_box,
+            lambda: (
+                "Shift+clique em outra página aplica isto a todo o intervalo "
+                "entre as duas"
+            ),
+            self.fonts.tiny,
+        )
 
         checked.trace_add("write", lambda *_a, i=index: self._on_check_changed(i))
         keep.trace_add("write", lambda *_a, i=index: self._on_keep_changed(i))
@@ -1410,6 +1504,31 @@ class SlidecutApp:
         self._refresh_summary()
         if self._focused == index:
             self._refresh_inspector_actions()
+
+    def _keep_box_clicked(self, index: int) -> None:
+        """Guarda a pagina do ultimo clique simples em "fora do corte" — e a
+        partir dela que um Shift+clique seguinte conta o intervalo."""
+        self._keep_anchor = index
+
+    def _keep_box_shift_clicked(self, index: int) -> str:
+        """Shift+clique em "fora do corte": aplica a esta pagina o mesmo que um
+        clique simples aplicaria (inverte o estado atual dela) e estende o
+        mesmo resultado para todas as paginas entre a ultima clicada e esta,
+        as duas incluidas. Sem pagina anterior, vale so para esta.
+
+        Retorna "break" para a caixa nativa nao alternar de novo por conta
+        propria em cima do que este metodo ja decidiu.
+        """
+        anchor = self._keep_anchor if self._keep_anchor is not None else index
+        lo, hi = sorted((anchor, index))
+        current = self.keep_vars[index]
+        new_state = not current.get()
+        for page in range(lo, hi + 1):
+            var = self.keep_vars.get(page)
+            if var is not None:
+                var.set(new_state)
+        self._keep_anchor = index
+        return "break"
 
     # -------------------------------------------------- painel de inspecao
     def _focus_page(self, index: int, big: bool = False) -> None:

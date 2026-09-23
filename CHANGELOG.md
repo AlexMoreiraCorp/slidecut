@@ -1,5 +1,14 @@
 # Notas de atualização
 
+## 0.10.10 — 2026-09-23
+
+### Selecionar um intervalo de páginas fora do corte
+- Além do clique página a página, agora dá para marcar/desmarcar "fora do corte" num intervalo inteiro de uma vez: clique numa página e depois **Shift+clique** em outra aplica o mesmo estado a todas as páginas entre as duas. O clique simples continua funcionando igual, um de cada vez.
+
+### Ficou mais claro o que cada clique faz
+- A marca de corte (**CORTA AQUI**/**marcar corte aqui**) agora mostra uma dica ao passar o mouse, avisando que clicar de novo desfaz o corte e devolve a página para o corte anterior — antes isso só se descobria clicando.
+- O nome do arquivo também ganhou uma dica ("clique para renomear este corte") e a do campo "fora do corte" avisa sobre o Shift+clique.
+
 ## 0.10.9 — 2026-08-27
 
 - A pasta com os arquivos gerados agora **abre sozinha** quando o corte termina — o modo
