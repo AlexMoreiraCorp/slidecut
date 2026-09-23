@@ -38,7 +38,14 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Rodar os testes
-        run: python -m pytest -q
+        shell: pwsh
+        run: |
+          python -m pytest -q --tb=short 2>&1 | Tee-Object -FilePath pytest_output.txt
+          $exit = $LASTEXITCODE
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Saida do pytest`n``````"
+          Get-Content pytest_output.txt -Tail 300 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``````"
+          exit $exit
 
       - name: Gerar o icone
         run: python tools\make_icon.py
