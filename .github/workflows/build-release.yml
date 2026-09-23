@@ -1,0 +1,80 @@
+name: build-release
+
+# Builda o slidecut e o instalador numa maquina Windows do GitHub Actions, e
+# publica como asset do release cuja tag bater. Existe porque o pacote final
+# (pyinstaller --windowed + Inno Setup 6) so pode ser gerado no Windows, e nem
+# sempre quem mexe no codigo esta na frente de uma maquina Windows na hora.
+#
+# Disparo: push de uma tag "vX.Y.Z" (o normal), ou manual via
+# "Run workflow" informando a tag de um release ja existente (rascunho ou
+# nao) — util para reconstruir sem criar tag nova.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag do release (ex.: v0.10.10)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Rodar os testes
+        run: python -m pytest -q
+
+      - name: Gerar o icone
+        run: python tools\make_icon.py
+
+      - name: Empacotar o executavel
+        run: |
+          pyinstaller --noconfirm --onefile --windowed `
+            --name slidecut `
+            --icon src\slidecut\assets\icon.ico `
+            --paths src `
+            --add-data "src\slidecut\assets\icon.ico;slidecut\assets" `
+            entry_gui.py
+
+      - name: Instalar o Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compilar o instalador
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\slidecut.iss'
+
+      - name: Gerar o checksum SHA-256
+        id: asset
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
+          $hashLine = "{0}  {1}" -f (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower(), $exe.Name
+          $shaPath = "$($exe.FullName).sha256"
+          Set-Content -Path $shaPath -Value $hashLine -Encoding ascii -NoNewline
+          "exe_path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "sha_path=$shaPath" >> $env:GITHUB_OUTPUT
+
+      - name: Publicar o instalador no release e sair do rascunho
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          gh release upload $tag "${{ steps.asset.outputs.exe_path }}" "${{ steps.asset.outputs.sha_path }}" --clobber --repo "${{ github.repository }}"
+          gh release edit $tag --draft=false --repo "${{ github.repository }}"
